@@ -26,7 +26,7 @@ Use a shared helper `appendCashLedger(tx, { sourceType, sourceId, amount, note }
 | Cash sale | `+totalAmount` |
 | Credit sale | `+paidAmount` (whatever was collected upfront, 0 if none) |
 | Cash purchase | `-totalAmount` |
-| Credit purchase | 0 net effect logged as a matching purchase+payment pair (see [[purchase-sale-flow]]) |
+| Credit purchase | **no `CashLedgerEntry` at purchase time** — cash hasn't moved yet, only a `SupplierLedgerEntry(PURCHASE, +totalAmount)` is written. Cash only moves later when a `Payment` is recorded against it (see [[credit-and-ledger]]). |
 | Payment received from customer | `+amount` |
 | Payment made to supplier | `-amount` |
 | Expense | `-amount` |
