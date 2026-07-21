@@ -1,0 +1,319 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Auth ----------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+}
+
+// ---------- Enums ----------
+
+enum PaymentType {
+  CASH
+  CREDIT
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  JAZZCASH
+  EASYPAISA
+}
+
+enum PaymentDirection {
+  PAYABLE
+  RECEIVABLE
+}
+
+enum PhoneCondition {
+  NEW
+  USED
+}
+
+enum PhoneStatus {
+  IN_STOCK
+  SOLD
+  CLAIMED
+  WITH_SUPPLIER
+  RETURNED_TO_STOCK
+}
+
+enum PurchaseItemType {
+  PHONE
+  ACCESSORY
+}
+
+enum ClaimStatus {
+  RECEIVED_FROM_CUSTOMER
+  SENT_TO_SUPPLIER
+  RECEIVED_FROM_SUPPLIER
+  DELIVERED_TO_CUSTOMER
+  REFUNDED
+  REJECTED
+}
+
+// ---------- Parties ----------
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+
+  purchases Purchase[]
+  payments  Payment[]
+  ledger    SupplierLedgerEntry[]
+  claims    Claim[]
+  phones    Phone[]
+}
+
+model SupplierLedgerEntry {
+  id           String   @id @default(cuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id])
+  purchaseId   String?
+  paymentId    String?
+  type         String
+  amount       Decimal  @db.Decimal(12, 2)
+  balanceAfter Decimal  @db.Decimal(12, 2)
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@index([supplierId])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @unique
+  address   String?
+  createdAt DateTime @default(now())
+
+  sales     Sale[]
+  payments  Payment[]
+  ledger    CustomerLedgerEntry[]
+  claims    Claim[]
+}
+
+model CustomerLedgerEntry {
+  id           String   @id @default(cuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id])
+  saleId       String?
+  paymentId    String?
+  claimId      String?
+  type         String
+  amount       Decimal  @db.Decimal(12, 2)
+  balanceAfter Decimal  @db.Decimal(12, 2)
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@index([customerId])
+}
+
+// ---------- Inventory ----------
+
+model Phone {
+  id                String         @id @default(cuid())
+  imei              String         @unique
+  brand             String
+  model             String
+  storage           String?
+  color             String?
+  condition         PhoneCondition
+  warrantyMonths    Int?
+  warrantyStartDate DateTime?
+  costPrice         Decimal        @db.Decimal(12, 2)
+  salePrice         Decimal?       @db.Decimal(12, 2)
+  status            PhoneStatus    @default(IN_STOCK)
+
+  supplierId        String?
+  supplier          Supplier?      @relation(fields: [supplierId], references: [id])
+  purchaseItem      PurchaseItem?
+  saleItem          SaleItem?
+  claim             Claim?
+
+  createdAt         DateTime       @default(now())
+  soldAt            DateTime?
+}
+
+model Accessory {
+  id                String   @id @default(cuid())
+  name              String
+  brand             String
+  category          String
+  variant           String?
+  costPrice         Decimal  @db.Decimal(12, 2)
+  salePrice         Decimal  @db.Decimal(12, 2)
+  quantity          Int      @default(0)
+  lowStockThreshold Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  purchaseItems     PurchaseItem[]
+  saleItems         SaleItem[]
+  claims            Claim[]
+
+  @@unique([name, brand, variant])
+}
+
+// ---------- Purchases ----------
+
+model Purchase {
+  id            String         @id @default(cuid())
+  invoiceNumber String         @unique
+  supplierId    String
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  paymentType   PaymentType
+  creditDays    Int?
+  dueDate       DateTime?
+  totalAmount   Decimal        @db.Decimal(12, 2)
+  paidAmount    Decimal        @default(0) @db.Decimal(12, 2)
+  status        PaymentStatus  @default(UNPAID)
+  items         PurchaseItem[]
+  payments      Payment[]
+  createdAt     DateTime       @default(now())
+}
+
+model PurchaseItem {
+  id          String           @id @default(cuid())
+  purchaseId  String
+  purchase    Purchase         @relation(fields: [purchaseId], references: [id])
+  itemType    PurchaseItemType
+
+  phoneId     String?          @unique
+  phone       Phone?           @relation(fields: [phoneId], references: [id])
+
+  accessoryId String?
+  accessory   Accessory?       @relation(fields: [accessoryId], references: [id])
+  quantity    Int?
+
+  rate        Decimal          @db.Decimal(12, 2)
+  lineTotal   Decimal          @db.Decimal(12, 2)
+
+  @@index([purchaseId])
+}
+
+// ---------- Sales ----------
+
+model Sale {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  paymentType   PaymentType
+  creditDays    Int?
+  dueDate       DateTime?
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  paidAmount    Decimal       @default(0) @db.Decimal(12, 2)
+  status        PaymentStatus @default(UNPAID)
+  items         SaleItem[]
+  payments      Payment[]
+  createdAt     DateTime      @default(now())
+}
+
+model SaleItem {
+  id          String           @id @default(cuid())
+  saleId      String
+  sale        Sale             @relation(fields: [saleId], references: [id])
+  itemType    PurchaseItemType
+
+  phoneId     String?          @unique
+  phone       Phone?           @relation(fields: [phoneId], references: [id])
+
+  accessoryId String?
+  accessory   Accessory?       @relation(fields: [accessoryId], references: [id])
+  quantity    Int?
+
+  rate        Decimal          @db.Decimal(12, 2)
+  costAtSale  Decimal          @db.Decimal(12, 2)
+  lineTotal   Decimal          @db.Decimal(12, 2)
+
+  @@index([saleId])
+}
+
+// ---------- Payments ----------
+
+model Payment {
+  id         String           @id @default(cuid())
+  direction  PaymentDirection
+  supplierId String?
+  supplier   Supplier?        @relation(fields: [supplierId], references: [id])
+  customerId String?
+  customer   Customer?        @relation(fields: [customerId], references: [id])
+  purchaseId String?
+  purchase   Purchase?        @relation(fields: [purchaseId], references: [id])
+  saleId     String?
+  sale       Sale?            @relation(fields: [saleId], references: [id])
+  amount     Decimal          @db.Decimal(12, 2)
+  method     PaymentMethod
+  note       String?
+  createdAt  DateTime         @default(now())
+}
+
+// ---------- Claims / Returns ----------
+
+model Claim {
+  id                     String           @id @default(cuid())
+  claimNumber            String           @unique
+  customerId             String
+  customer               Customer         @relation(fields: [customerId], references: [id])
+
+  itemType               PurchaseItemType
+  phoneId                String?          @unique
+  phone                  Phone?           @relation(fields: [phoneId], references: [id])
+  accessoryId            String?
+  accessory              Accessory?       @relation(fields: [accessoryId], references: [id])
+  quantity               Int?
+
+  reason                 String
+  status                 ClaimStatus      @default(RECEIVED_FROM_CUSTOMER)
+
+  supplierId             String?
+  supplier               Supplier?        @relation(fields: [supplierId], references: [id])
+
+  receivedFromCustomerAt DateTime         @default(now())
+  sentToSupplierAt       DateTime?
+  receivedFromSupplierAt DateTime?
+  deliveredToCustomerAt  DateTime?
+
+  resolutionNote         String?
+  createdAt              DateTime         @default(now())
+}
+
+// ---------- Cash Ledger & Expenses ----------
+
+model CashLedgerEntry {
+  id           String   @id @default(cuid())
+  sourceType   String
+  sourceId     String?
+  amount       Decimal  @db.Decimal(12, 2)
+  balanceAfter Decimal  @db.Decimal(12, 2)
+  note         String?
+  createdAt    DateTime @default(now())
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  category  String
+  amount    Decimal  @db.Decimal(12, 2)
+  note      String?
+  createdAt DateTime @default(now())
+}
