@@ -9,9 +9,9 @@ export default function LoginPage() {
           <Image
             src="/logo-full-light.png"
             alt="Qadri Mobile Communication"
-            width={224}
-            height={150}
-            className="mb-4 h-auto w-56"
+            width={970}
+            height={1024}
+            className="mb-4 h-auto w-40"
             priority
           />
           <h1 className="sr-only">Qadri Mobile Communication</h1>
