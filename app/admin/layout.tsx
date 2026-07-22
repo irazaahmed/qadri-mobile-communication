@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { signOutAction } from "./actions";
@@ -18,10 +19,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <aside className="flex shrink-0 flex-col border-b border-slate/10 bg-brand-teal text-white print:hidden md:min-h-screen md:w-56 md:border-b-0 md:border-r">
+      <aside className="flex shrink-0 flex-col border-b border-white/10 bg-navy text-white print:hidden md:min-h-screen md:w-56 md:border-b-0 md:border-r">
         <div className="px-5 py-5">
-          <Link href="/admin" className="block text-lg font-semibold leading-tight">
-            Qadri Mobile
+          <Link href="/admin" className="flex items-center gap-2">
+            <Image src="/logo-icon.png" alt="" width={28} height={28} className="shrink-0" />
+            <span className="text-lg font-semibold leading-tight">Qadri Mobile</span>
           </Link>
           <p className="text-xs text-white/60">Admin panel</p>
         </div>

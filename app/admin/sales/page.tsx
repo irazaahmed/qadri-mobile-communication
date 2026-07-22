@@ -60,7 +60,7 @@ export default async function SalesPage({
         </Select>
         <button
           type="submit"
-          className="rounded-full bg-brand-teal px-4 py-2 text-sm font-medium text-white hover:bg-brand-teal-light"
+          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
         >
           Filter
         </button>
@@ -93,7 +93,7 @@ export default async function SalesPage({
                 return (
                   <tr key={s.id} className={trHover}>
                     <td className={tdClass}>
-                      <a href={`/admin/sales/${s.id}/invoice`} className="text-brand-teal hover:underline">
+                      <a href={`/admin/sales/${s.id}/invoice`} className="text-brand-blue hover:underline">
                         {s.invoiceNumber}
                       </a>
                     </td>

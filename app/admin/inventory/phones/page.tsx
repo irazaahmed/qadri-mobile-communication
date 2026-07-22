@@ -80,7 +80,7 @@ export default async function PhonesPage({
         </Select>
         <button
           type="submit"
-          className="rounded-full bg-brand-teal px-4 py-2 text-sm font-medium text-white hover:bg-brand-teal-light"
+          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
         >
           Search
         </button>
@@ -131,7 +131,7 @@ export default async function PhonesPage({
                   <td className={tdClass}>{p.supplierId ? supplierName.get(p.supplierId) ?? "-" : "-"}</td>
                   <td className={tdClass}>{formatDate(p.createdAt)}</td>
                   <td className={tdClass}>
-                    <a href={`/admin/inventory/phones/${p.id}/edit`} className="text-brand-teal hover:underline">
+                    <a href={`/admin/inventory/phones/${p.id}/edit`} className="text-brand-blue hover:underline">
                       Edit
                     </a>
                   </td>

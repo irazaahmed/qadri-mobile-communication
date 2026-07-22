@@ -48,7 +48,7 @@ export function PhoneEditForm({
         </div>
         <div>
           <p className="text-xs text-slate">Status</p>
-          <Badge variant="teal">{phone.status.replaceAll("_", " ")}</Badge>
+          <Badge variant="blue">{phone.status.replaceAll("_", " ")}</Badge>
         </div>
         <div>
           <p className="text-xs text-slate">Warranty</p>

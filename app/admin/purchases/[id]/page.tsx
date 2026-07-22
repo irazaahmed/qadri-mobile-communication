@@ -71,7 +71,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
             {items.map(({ item, phone, accessory }) => (
               <tr key={item.id} className={trHover}>
                 <td className={tdClass}>
-                  <Badge variant={item.itemType === "PHONE" ? "teal" : "slate"}>{item.itemType}</Badge>
+                  <Badge variant={item.itemType === "PHONE" ? "blue" : "slate"}>{item.itemType}</Badge>
                 </td>
                 <td className={tdClass}>
                   {phone ? (

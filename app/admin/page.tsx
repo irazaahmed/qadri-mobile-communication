@@ -29,7 +29,7 @@ export default async function DashboardPage() {
             <ButtonLink href="/admin/purchases/new" variant="outline">
               + New purchase
             </ButtonLink>
-            <ButtonLink href="/admin/sales/new" variant="amber">
+            <ButtonLink href="/admin/sales/new" variant="cyan">
               + New sale
             </ButtonLink>
           </>
@@ -39,7 +39,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Today's sales" value={formatCurrency(today.salesTotal)} sub={`${today.salesCount} invoice(s)`} />
         <StatCard label="Today's purchases" value={formatCurrency(today.purchasesTotal)} sub={`${today.purchasesCount} invoice(s)`} />
-        <StatCard label="Cash balance" value={formatCurrency(cashBalance)} sub="Live shop cash" accent="teal" />
+        <StatCard label="Cash balance" value={formatCurrency(cashBalance)} sub="Live shop cash" accent="blue" />
         <StatCard label="Payable to suppliers" value={formatCurrency(totals.totalPayable)} sub="Outstanding" accent="danger" />
         <StatCard label="Receivable from customers" value={formatCurrency(totals.totalReceivable)} sub="Outstanding" accent="warning" />
       </div>
@@ -47,7 +47,7 @@ export default async function DashboardPage() {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-brand-teal">Payable — oldest due first</h2>
+            <h2 className="font-semibold text-brand-blue">Payable — oldest due first</h2>
             <ButtonLink href="/admin/suppliers" variant="ghost" size="sm">
               Suppliers
             </ButtonLink>
@@ -71,7 +71,7 @@ export default async function DashboardPage() {
                     return (
                       <tr key={p.id} className={trHover}>
                         <td className={tdClass}>
-                          <a href={`/admin/purchases/${p.id}`} className="text-brand-teal hover:underline">
+                          <a href={`/admin/purchases/${p.id}`} className="text-brand-blue hover:underline">
                             {p.invoiceNumber}
                           </a>
                         </td>
@@ -98,7 +98,7 @@ export default async function DashboardPage() {
 
         <Card className="p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-brand-teal">Receivable — oldest due first</h2>
+            <h2 className="font-semibold text-brand-blue">Receivable — oldest due first</h2>
             <ButtonLink href="/admin/customers" variant="ghost" size="sm">
               Customers
             </ButtonLink>
@@ -122,7 +122,7 @@ export default async function DashboardPage() {
                     return (
                       <tr key={s.id} className={trHover}>
                         <td className={tdClass}>
-                          <a href={`/admin/sales/${s.id}/invoice`} className="text-brand-teal hover:underline">
+                          <a href={`/admin/sales/${s.id}/invoice`} className="text-brand-blue hover:underline">
                             {s.invoiceNumber}
                           </a>
                         </td>
@@ -150,7 +150,7 @@ export default async function DashboardPage() {
 
       <Card className="mt-6 p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-brand-teal">Low stock accessories</h2>
+          <h2 className="font-semibold text-brand-blue">Low stock accessories</h2>
           <ButtonLink href="/admin/inventory/accessories" variant="ghost" size="sm">
             View all
           </ButtonLink>
@@ -188,11 +188,11 @@ function StatCard({
   label: string;
   value: string;
   sub?: string;
-  accent?: "slate" | "teal" | "danger" | "warning";
+  accent?: "slate" | "blue" | "danger" | "warning";
 }) {
   const accentClass = {
     slate: "text-foreground",
-    teal: "text-brand-teal",
+    blue: "text-brand-blue",
     danger: "text-danger",
     warning: "text-warning",
   }[accent];

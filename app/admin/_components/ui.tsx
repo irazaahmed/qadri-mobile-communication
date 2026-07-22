@@ -26,9 +26,9 @@ const buttonSizes = {
 } as const;
 
 const buttonVariants = {
-  primary: "bg-brand-teal text-white hover:bg-brand-teal-light",
-  amber: "bg-brand-amber text-white hover:opacity-90",
-  outline: "border border-brand-teal text-brand-teal hover:bg-surface-muted",
+  primary: "bg-brand-blue text-white hover:bg-brand-blue-light",
+  cyan: "bg-brand-cyan text-navy hover:opacity-90",
+  outline: "border border-brand-blue text-brand-blue hover:bg-surface-muted",
   ghost: "text-slate hover:bg-surface-muted",
   danger: "bg-danger text-white hover:opacity-90",
 } as const;
@@ -90,7 +90,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-2xl font-semibold text-brand-teal">{title}</h1>
+        <h1 className="text-2xl font-semibold text-brand-blue">{title}</h1>
         {subtitle ? <p className="mt-1 text-sm text-slate">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
@@ -103,7 +103,7 @@ const badgeVariants = {
   danger: "bg-danger/10 text-danger border-danger/20",
   warning: "bg-warning/10 text-warning border-warning/20",
   slate: "bg-slate/10 text-slate border-slate/20",
-  teal: "bg-brand-teal/10 text-brand-teal border-brand-teal/20",
+  blue: "bg-brand-blue/10 text-brand-blue border-brand-blue/20",
 } as const;
 
 export function Badge({
@@ -123,7 +123,7 @@ export function Badge({
 }
 
 const fieldClass =
-  "w-full rounded-lg border border-slate/25 bg-surface px-3 py-2 text-sm text-foreground placeholder:text-slate/60 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/30 disabled:bg-surface-muted disabled:text-slate";
+  "w-full rounded-lg border border-slate/25 bg-surface px-3 py-2 text-sm text-foreground placeholder:text-slate/60 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/30 disabled:bg-surface-muted disabled:text-slate";
 
 export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={`${fieldClass} ${className}`} {...props} />;

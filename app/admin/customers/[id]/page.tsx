@@ -46,7 +46,7 @@ export default async function CustomerLedgerPage({ params }: { params: Promise<{
       </Card>
 
       <div className="mb-3">
-        <h2 className="font-semibold text-brand-teal">Sales</h2>
+        <h2 className="font-semibold text-brand-blue">Sales</h2>
       </div>
       {sales.length === 0 ? (
         <EmptyState label="No sales to this customer yet." />
@@ -70,7 +70,7 @@ export default async function CustomerLedgerPage({ params }: { params: Promise<{
                 return (
                   <tr key={s.id} className={trHover}>
                     <td className={tdClass}>
-                      <a href={`/admin/sales/${s.id}/invoice`} className="text-brand-teal hover:underline">
+                      <a href={`/admin/sales/${s.id}/invoice`} className="text-brand-blue hover:underline">
                         {s.invoiceNumber}
                       </a>
                     </td>
@@ -102,7 +102,7 @@ export default async function CustomerLedgerPage({ params }: { params: Promise<{
       )}
 
       <div className="mb-3">
-        <h2 className="font-semibold text-brand-teal">Ledger</h2>
+        <h2 className="font-semibold text-brand-blue">Ledger</h2>
       </div>
       {ledger.length === 0 ? (
         <EmptyState label="No ledger activity yet." />

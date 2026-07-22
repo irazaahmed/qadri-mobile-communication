@@ -61,7 +61,7 @@ export default async function PurchasesPage({
         </Select>
         <button
           type="submit"
-          className="rounded-full bg-brand-teal px-4 py-2 text-sm font-medium text-white hover:bg-brand-teal-light"
+          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
         >
           Filter
         </button>
@@ -94,7 +94,7 @@ export default async function PurchasesPage({
                 return (
                   <tr key={p.id} className={trHover}>
                     <td className={tdClass}>
-                      <a href={`/admin/purchases/${p.id}`} className="text-brand-teal hover:underline">
+                      <a href={`/admin/purchases/${p.id}`} className="text-brand-blue hover:underline">
                         {p.invoiceNumber}
                       </a>
                     </td>

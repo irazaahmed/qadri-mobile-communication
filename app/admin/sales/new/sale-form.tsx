@@ -254,7 +254,7 @@ export function SaleForm({
           <div>
             <p className="mb-1 text-xs font-medium text-slate">Customer (optional for cash)</p>
             {selectedCustomer ? (
-              <div className="flex items-center gap-2 rounded-lg border border-brand-teal/30 bg-brand-teal/5 px-3 py-2 text-sm">
+              <div className="flex items-center gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-3 py-2 text-sm">
                 <span className="font-medium">{selectedCustomer.name}</span>
                 <span className="text-slate">{selectedCustomer.phone}</span>
                 <button
@@ -346,7 +346,7 @@ export function SaleForm({
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card className="p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-teal">Add phone (in stock)</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-blue">Add phone (in stock)</p>
           <Input
             placeholder="Search IMEI / brand / model"
             value={phoneSearch}
@@ -404,7 +404,7 @@ export function SaleForm({
         {lines.map((line) => (
           <Card key={line.key} className="p-4">
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={line.itemType === "PHONE" ? "teal" : "slate"}>{line.itemType}</Badge>
+              <Badge variant={line.itemType === "PHONE" ? "blue" : "slate"}>{line.itemType}</Badge>
               <span className="flex-1 text-sm">{line.label}</span>
               {line.itemType === "ACCESSORY" ? (
                 <div className="w-20">
@@ -442,7 +442,7 @@ export function SaleForm({
 
       <Card className="flex items-center justify-between p-5">
         <span className="text-sm text-slate">Running total (server recomputes and is authoritative)</span>
-        <span className="text-xl font-semibold text-brand-teal">{formatCurrency(total)}</span>
+        <span className="text-xl font-semibold text-brand-blue">{formatCurrency(total)}</span>
       </Card>
 
       <ErrorBanner message={error} />

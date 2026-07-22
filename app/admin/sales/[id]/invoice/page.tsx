@@ -46,18 +46,18 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         />
       </div>
 
-      <div className="rounded-xl border border-slate/10 bg-surface p-8 shadow-sm print:rounded-none print:border-none print:shadow-none">
-        <div className="mb-6 flex items-start justify-between border-b border-slate/10 pb-6">
+      <div className="rounded-xl border border-gray-200 bg-white p-8 text-gray-900 shadow-sm print:rounded-none print:border-none print:shadow-none">
+        <div className="mb-6 flex items-start justify-between border-b border-gray-200 pb-6">
           <div className="flex items-center gap-3">
-            <Image src="/QMC logo 2.0.png" alt="Qadri Mobile Communication" width={64} height={64} />
+            <Image src="/logo-icon.png" alt="Qadri Mobile Communication" width={64} height={64} />
             <div>
-              <h1 className="text-lg font-semibold text-brand-teal">Qadri Mobile Communication</h1>
-              <p className="text-xs text-slate">Phones &amp; accessories</p>
+              <h1 className="text-lg font-semibold text-brand-blue">Qadri Mobile Communication</h1>
+              <p className="text-xs text-gray-500">Phones &amp; accessories</p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xl font-semibold text-brand-teal">{sale.invoiceNumber}</p>
-            <p className="text-sm text-slate">{formatDate(sale.createdAt)}</p>
+            <p className="text-xl font-semibold text-brand-blue">{sale.invoiceNumber}</p>
+            <p className="text-sm text-gray-500">{formatDate(sale.createdAt)}</p>
             <div className="mt-1">
               <Badge variant={STATUS_BADGE[sale.status]}>{sale.status}</Badge>
             </div>
@@ -66,20 +66,20 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
 
         <div className="mb-6 flex justify-between text-sm">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate">Billed to</p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Billed to</p>
             <p className="font-medium">{customer?.name ?? "Walk-in customer"}</p>
-            {customer?.phone ? <p className="text-slate">{customer.phone}</p> : null}
+            {customer?.phone ? <p className="text-gray-500">{customer.phone}</p> : null}
           </div>
           <div className="text-right">
-            <p className="text-xs uppercase tracking-wide text-slate">Payment type</p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Payment type</p>
             <p className="font-medium">{sale.paymentType}</p>
-            {sale.dueDate ? <p className="text-slate">Due {formatDate(sale.dueDate)}</p> : null}
+            {sale.dueDate ? <p className="text-gray-500">Due {formatDate(sale.dueDate)}</p> : null}
           </div>
         </div>
 
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-slate/15 text-xs uppercase tracking-wide text-slate">
+            <tr className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
               <th className="py-2">Item</th>
               <th className="py-2">Qty</th>
               <th className="py-2 text-right">Rate</th>
@@ -88,21 +88,21 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           </thead>
           <tbody>
             {items.map(({ item, phone, accessory }) => (
-              <tr key={item.id} className="border-b border-slate/10">
+              <tr key={item.id} className="border-b border-gray-200">
                 <td className="py-2">
                   {phone ? (
                     <div>
                       <p className="font-medium">
                         {phone.brand} {phone.model} {phone.storage ? `(${phone.storage})` : ""}
                       </p>
-                      <p className="text-xs text-slate">
+                      <p className="text-xs text-gray-500">
                         {phone.color ? `${phone.color} — ` : ""}IMEI {phone.imei}
                       </p>
                     </div>
                   ) : accessory ? (
                     <div>
                       <p className="font-medium">{accessory.name}</p>
-                      <p className="text-xs text-slate">
+                      <p className="text-xs text-gray-500">
                         {accessory.brand}
                         {accessory.variant ? `, ${accessory.variant}` : ""}
                       </p>
@@ -121,24 +121,24 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
 
         <div className="ml-auto mt-6 w-full max-w-xs space-y-1 text-sm">
           <div className="flex justify-between">
-            <span className="text-slate">Subtotal</span>
+            <span className="text-gray-500">Subtotal</span>
             <span>{formatCurrency(sale.totalAmount.toString())}</span>
           </div>
-          <div className="flex justify-between font-semibold text-brand-teal">
+          <div className="flex justify-between font-semibold text-brand-blue">
             <span>Total</span>
             <span>{formatCurrency(sale.totalAmount.toString())}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate">Paid</span>
+            <span className="text-gray-500">Paid</span>
             <span>{formatCurrency(sale.paidAmount.toString())}</span>
           </div>
           <div className="flex justify-between font-medium">
             <span>Amount due</span>
-            <span className={amountDue > 0 ? "text-danger" : ""}>{formatCurrency(amountDue)}</span>
+            <span className={amountDue > 0 ? "text-red-600" : ""}>{formatCurrency(amountDue)}</span>
           </div>
         </div>
 
-        <p className="mt-8 text-center text-xs text-slate">Thank you for shopping with Qadri Mobile Communication.</p>
+        <p className="mt-8 text-center text-xs text-gray-500">Thank you for shopping with Qadri Mobile Communication.</p>
       </div>
     </div>
   );

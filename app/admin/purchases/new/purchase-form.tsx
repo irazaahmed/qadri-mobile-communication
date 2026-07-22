@@ -252,7 +252,7 @@ export function PurchaseForm({
           line.itemType === "PHONE" ? (
             <Card key={line.key} className="p-4">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-brand-teal">Phone</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-brand-blue">Phone</span>
                 <button
                   type="button"
                   onClick={() => removeLine(line.key)}
@@ -387,7 +387,7 @@ export function PurchaseForm({
 
       <Card className="flex items-center justify-between p-5">
         <span className="text-sm text-slate">Running total (server recomputes and is authoritative)</span>
-        <span className="text-xl font-semibold text-brand-teal">{formatCurrency(total)}</span>
+        <span className="text-xl font-semibold text-brand-blue">{formatCurrency(total)}</span>
       </Card>
 
       <ErrorBanner message={error} />

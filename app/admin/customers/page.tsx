@@ -44,7 +44,7 @@ export default async function CustomersPage({
         <Input name="phone" placeholder="Search by phone" defaultValue={params.phone} className="max-w-[200px]" />
         <button
           type="submit"
-          className="rounded-full bg-brand-teal px-4 py-2 text-sm font-medium text-white hover:bg-brand-teal-light"
+          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
         >
           Search
         </button>
@@ -70,14 +70,14 @@ export default async function CustomersPage({
               {customers.map((c) => (
                 <tr key={c.id} className={trHover}>
                   <td className={`${tdClass} font-medium`}>
-                    <a href={`/admin/customers/${c.id}`} className="text-brand-teal hover:underline">
+                    <a href={`/admin/customers/${c.id}`} className="text-brand-blue hover:underline">
                       {c.name}
                     </a>
                   </td>
                   <td className={tdClass}>{c.phone}</td>
                   <td className={tdClass}>{c.address || "-"}</td>
                   <td className={`${tdClass} flex gap-3`}>
-                    <a href={`/admin/customers/${c.id}/edit`} className="text-brand-teal hover:underline">
+                    <a href={`/admin/customers/${c.id}/edit`} className="text-brand-blue hover:underline">
                       Edit
                     </a>
                     <DeleteButton action={deleteCustomerAction.bind(null, c.id)} />

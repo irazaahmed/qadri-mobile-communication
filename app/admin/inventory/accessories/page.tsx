@@ -49,7 +49,7 @@ export default async function AccessoriesPage({
         </Select>
         <button
           type="submit"
-          className="rounded-full bg-brand-teal px-4 py-2 text-sm font-medium text-white hover:bg-brand-teal-light"
+          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
         >
           Search
         </button>
@@ -97,13 +97,13 @@ export default async function AccessoriesPage({
                     <td className={`${tdClass} flex gap-3`}>
                       <a
                         href={`/admin/inventory/accessories/${a.id}/restock`}
-                        className="text-brand-teal hover:underline"
+                        className="text-brand-blue hover:underline"
                       >
                         Restock
                       </a>
                       <a
                         href={`/admin/inventory/accessories/${a.id}/edit`}
-                        className="text-brand-teal hover:underline"
+                        className="text-brand-blue hover:underline"
                       >
                         Edit
                       </a>
