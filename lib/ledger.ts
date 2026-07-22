@@ -52,6 +52,42 @@ export async function appendCashLedger(
   });
 }
 
+/**
+ * Bank ledger — entirely independent of CashLedgerEntry (see the model
+ * comment in schema.prisma). No shop purchase/sale/payment/expense/claim
+ * code may call this, and this must never call appendCashLedger.
+ */
+export interface AppendBankLedgerInput {
+  type: string;
+  amount: Prisma.Decimal | number | string;
+  note?: string | null;
+}
+
+/**
+ * Appends exactly one BankLedgerEntry inside the given transaction.
+ * `amount` is signed: positive = money in, negative = money out.
+ * `balanceAfter = previous balanceAfter + amount` (0 if no previous entry).
+ */
+export async function appendBankLedger(tx: Tx, { type, amount, note }: AppendBankLedgerInput) {
+  const signedAmount = new Prisma.Decimal(amount);
+
+  const latest = await tx.bankLedgerEntry.findFirst({
+    orderBy: { createdAt: "desc" },
+  });
+
+  const previousBalance = latest ? latest.balanceAfter : new Prisma.Decimal(0);
+  const balanceAfter = previousBalance.plus(signedAmount);
+
+  return tx.bankLedgerEntry.create({
+    data: {
+      type,
+      amount: signedAmount,
+      balanceAfter,
+      note: note ?? null,
+    },
+  });
+}
+
 export interface AppendSupplierLedgerInput {
   supplierId: string;
   purchaseId?: string | null;
