@@ -26,3 +26,18 @@ export function computeWarrantyStatus(phone: {
 
   return expiry.getTime() >= Date.now() ? "IN_WARRANTY" : "EXPIRED";
 }
+
+/** Whole days remaining until warranty expiry; negative once expired, null if not tracked. */
+export function daysUntilWarrantyExpiry(phone: {
+  warrantyStartDate: Date | null;
+  warrantyMonths: number | null;
+}): number | null {
+  if (!phone.warrantyStartDate || !phone.warrantyMonths) {
+    return null;
+  }
+
+  const expiry = new Date(phone.warrantyStartDate);
+  expiry.setMonth(expiry.getMonth() + phone.warrantyMonths);
+
+  return Math.ceil((expiry.getTime() - Date.now()) / 86_400_000);
+}

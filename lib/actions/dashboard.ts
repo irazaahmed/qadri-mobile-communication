@@ -1,7 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { Prisma, PaymentStatus } from "@prisma/client";
+import { Prisma, PaymentStatus, PhoneStatus } from "@prisma/client";
+import { daysUntilWarrantyExpiry } from "@/lib/warranty";
 
 /**
  * lib/actions/dashboard.ts
@@ -92,6 +93,37 @@ export async function getLowStockAccessories(): Promise<LowStockAccessoryRow[]> 
       variant: a.variant,
       quantity: a.quantity,
       lowStockThreshold: a.lowStockThreshold,
+    }));
+}
+
+export interface WarrantyExpiringRow {
+  id: string;
+  imei: string;
+  brand: string;
+  model: string;
+  daysLeft: number;
+}
+
+/** Sold phones whose warranty expires within `withinDays` (default 30) — computed at read time, never stored. */
+export async function getWarrantyExpiringPhones(withinDays = 30): Promise<WarrantyExpiringRow[]> {
+  const phones = await prisma.phone.findMany({
+    where: {
+      status: PhoneStatus.SOLD,
+      warrantyStartDate: { not: null },
+      warrantyMonths: { not: null },
+    },
+  });
+
+  return phones
+    .map((p) => ({ phone: p, daysLeft: daysUntilWarrantyExpiry(p) }))
+    .filter((p): p is { phone: (typeof phones)[number]; daysLeft: number } => p.daysLeft !== null && p.daysLeft >= 0 && p.daysLeft <= withinDays)
+    .sort((a, b) => a.daysLeft - b.daysLeft)
+    .map((p) => ({
+      id: p.phone.id,
+      imei: p.phone.imei,
+      brand: p.phone.brand,
+      model: p.phone.model,
+      daysLeft: p.daysLeft,
     }));
 }
 

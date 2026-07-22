@@ -5,18 +5,20 @@ import {
   getOutstandingReceivables,
   getOutstandingTotals,
   getTodayStats,
+  getWarrantyExpiringPhones,
 } from "@/lib/actions/dashboard";
 import { Badge, ButtonLink, Card, EmptyState, PageHeader, tableWrap, table, thClass, tdClass, trHover } from "./_components/ui";
 import { formatCurrency, formatDate, isOverdue } from "./_lib/format";
 
 export default async function DashboardPage() {
-  const [today, cashBalance, lowStock, payables, receivables, totals] = await Promise.all([
+  const [today, cashBalance, lowStock, payables, receivables, totals, warrantyExpiring] = await Promise.all([
     getTodayStats(),
     getCashBalance(),
     getLowStockAccessories(),
     getOutstandingPayables(8),
     getOutstandingReceivables(8),
     getOutstandingTotals(),
+    getWarrantyExpiringPhones(30),
   ]);
 
   return (
@@ -171,6 +173,33 @@ export default async function DashboardPage() {
                   {a.quantity} left / min {a.lowStockThreshold}
                 </Badge>
               </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="mt-6 p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-brand-blue">Warranty expiring soon</h2>
+          <ButtonLink href="/admin/inventory/phones" variant="ghost" size="sm">
+            View all
+          </ButtonLink>
+        </div>
+        {warrantyExpiring.length === 0 ? (
+          <EmptyState label="Nothing expiring in the next 30 days." />
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {warrantyExpiring.map((p) => (
+              <a
+                key={p.id}
+                href={`/admin/inventory/phones/${p.id}/edit`}
+                className="flex items-center gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-sm hover:bg-warning/10"
+              >
+                <span className="font-medium">
+                  {p.brand} {p.model} <span className="font-mono text-xs text-slate">{p.imei}</span>
+                </span>
+                <Badge variant="warning">{p.daysLeft === 0 ? "expires today" : `${p.daysLeft}d left`}</Badge>
+              </a>
             ))}
           </div>
         )}
