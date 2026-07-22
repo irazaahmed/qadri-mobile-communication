@@ -18,6 +18,19 @@ export const metadata: Metadata = {
   description: "Qadri Mobile Communication — phones & accessories, admin panel",
 };
 
+// Blocking, runs before first paint so a stored dark preference never flashes
+// light first. No "system" branch on purpose: with no stored preference the
+// app stays on its default light theme rather than following the OS.
+const THEME_INIT_SCRIPT = `
+(function () {
+  try {
+    if (localStorage.getItem("qmc-theme") === "dark") {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,6 +41,9 @@ export default function RootLayout({
       lang="en"
       className={`${poppins.variable} ${inter.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

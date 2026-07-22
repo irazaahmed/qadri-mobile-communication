@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { signOutAction } from "./actions";
 import { NavLink } from "./_components/nav-link";
+import { ThemeToggle } from "./_components/theme-toggle";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard" },
@@ -34,10 +35,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-white/10 px-5 py-4">
+        <div className="space-y-2 border-t border-white/10 px-5 py-4">
           {session?.user?.email ? (
-            <p className="mb-2 truncate text-xs text-white/60">{session.user.email}</p>
+            <p className="truncate text-xs text-white/60">{session.user.email}</p>
           ) : null}
+          <ThemeToggle />
           <form action={signOutAction}>
             <button
               type="submit"

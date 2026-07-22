@@ -38,19 +38,24 @@
   --font-body: var(--font-inter);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: var(--color-navy);
-    --foreground: #e7ecf5;
-    --color-surface: #101a2e;
-    --color-surface-muted: var(--color-navy-light);
-    --color-slate: #94a3b8;
-    --color-brand-blue: #4f94ff;
-    --color-brand-blue-light: #7cb0ff;
-    --color-success: #22c55e;
-    --color-danger: #f87171;
-    --color-warning: #fbbf24;
-  }
+/*
+ * Theme is opt-in, not OS-driven: the app defaults to light (the :root
+ * values above) and only switches when the admin explicitly toggles dark
+ * mode, which stamps data-theme="dark" on <html> (see ThemeToggle +
+ * the blocking init script in app/layout.tsx). No prefers-color-scheme
+ * media query here on purpose — light stays the primary experience.
+ */
+:root[data-theme="dark"] {
+  --background: var(--color-navy);
+  --foreground: #e7ecf5;
+  --color-surface: #101a2e;
+  --color-surface-muted: var(--color-navy-light);
+  --color-slate: #94a3b8;
+  --color-brand-blue: #4f94ff;
+  --color-brand-blue-light: #7cb0ff;
+  --color-success: #22c55e;
+  --color-danger: #f87171;
+  --color-warning: #fbbf24;
 }
 
 body {

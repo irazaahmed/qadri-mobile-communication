@@ -64,32 +64,40 @@ Other conventions:
 
 ## 2. Brand & Design System (locked — derived from the uploaded logo files)
 
-Logo: a teal circular "Q" containing a white phone glyph, with an amber diagonal band forming the tail of the Q. Wordmark "Qadri" in bold teal, subtitle "MOBILE COMMUNICATION" in tracked-out grey small caps.
+Logo: navy "QADRI" wordmark in a blue-to-cyan gradient with a phone silhouette and signal-wave swoosh, subtitle "MOBILE COMMUNICATION" in tracked-out caps. Source art lives in `public/Logo.png`; derived assets are `public/logo-icon.png` (compact square mark, used in the sidebar and on invoices), `public/logo-full-light.png` (dark wordmark, for light/white surfaces), and `public/logo-full-dark.png` (light wordmark, for dark/navy surfaces).
 
-Exact colors sampled from the logo files (`public/QMC logo 2.0.png`, `public/QMC logo 2.0.1.2.png`):
+Color tokens (defined in `app/globals.css` `:root`, mapped to Tailwind utilities via `@theme inline`):
 
-| Token | Hex | Usage |
+| Token | Light value | Usage |
 |---|---|---|
-| `--color-brand-teal` | `#014C40` | Primary brand color — nav/header, primary buttons, logo, page titles |
-| `--color-brand-teal-light` | `#0B6153` | Hover/active state for teal elements |
-| `--color-brand-amber` | `#D77B01` | Secondary accent — used sparingly (10–15% of any screen): CTA highlights, badges, price emphasis, active tab indicator |
-| `--color-slate` | `#6C7073` | Muted/secondary text, subtitle labels, table meta text |
-| `--color-surface` | `#FFFFFF` | Base background |
-| `--color-surface-muted` | `#F5F7F6` | Card/section backgrounds, subtle cool-neutral off-white (not warm) |
+| `--color-brand-blue` | `#0a56c4` | Primary brand color — primary buttons, links, page titles |
+| `--color-brand-blue-light` | `#2f7de8` | Hover/active state for blue elements |
+| `--color-brand-cyan` | `#00a8fc` | Secondary accent — used sparingly: CTA highlights, badges, price emphasis, active tab indicator |
+| `--color-navy` | `#0a1120` | Fixed dark brand color — sidebar background, login/invoice page chrome. Not theme-reactive; stays navy in both light and dark mode by design (matches the logo's native dark surface) |
+| `--color-navy-light` | `#16213a` | Secondary dark surface tone |
+| `--color-slate` | `#64748b` | Muted/secondary text, subtitle labels, table meta text |
+| `--color-surface` | `#ffffff` | Base background |
+| `--color-surface-muted` | `#f3f6fb` | Card/section backgrounds |
 
-Keep all of the above as CSS variables in one central theme file (e.g. `app/globals.css` `:root` block) — never hardcode hex values inside component files.
+Never hardcode hex values inside component files — use the CSS variables (as Tailwind utility classes) instead. The one deliberate exception: components that must always render as a fixed light surface regardless of theme (the login card in `app/login/`, the printable invoice in `app/admin/sales/[id]/invoice/`) use static Tailwind classes (`bg-white`, `text-gray-900`, etc.) instead of the theme-reactive tokens, since those tokens flip under dark mode and would silently break a surface that's meant to always look like a white card / printed paper.
 
-**Semantic colors are separate from brand colors.** Amber is a brand accent, not a "warning" color in this system — don't conflate them. Use standard semantic tokens layered on top of the neutral base:
-- Success / in-stock / paid: green (e.g. `#15803D`)
-- Danger / overdue / negative stock: red (e.g. `#DC2626`)
-- Warning / low stock / partial: a distinct amber-adjacent but visually separable tone from brand amber, or use the brand amber only when the "warning" and "brand highlight" meanings genuinely coincide (e.g. a "pending" badge) — otherwise keep them apart so users don't misread a brand accent as an alert.
+**Semantic colors are separate from brand colors.** Cyan is a brand accent, not an "info" color in this system — don't conflate them. Use standard semantic tokens layered on top of the neutral base:
+- Success / in-stock / paid: green (`--color-success`, `#15803d`)
+- Danger / overdue / negative stock: red (`--color-danger`, `#dc2626`)
+- Warning / low stock / partial: amber (`--color-warning`, `#b45309`) — visually distinct from brand cyan so users don't misread a brand accent as an alert.
+
+**Theme: light is primary, dark is an opt-in toggle — not OS-driven.** The app defaults to light regardless of the visitor's OS `prefers-color-scheme`; dark mode only activates when the admin explicitly flips it via `ThemeToggle` (`app/admin/_components/theme-toggle.tsx`, in the sidebar footer). Mechanism:
+- Dark overrides live under the `:root[data-theme="dark"]` selector in `app/globals.css` (not a `prefers-color-scheme` media query).
+- `ThemeToggle` sets `data-theme` on `<html>` and persists the choice to `localStorage` under the `qmc-theme` key.
+- A small blocking script in `app/layout.tsx` (`<head>`) re-applies a stored `"dark"` preference before first paint, so there's no flash of the wrong theme — but if nothing is stored, it does nothing, which means the default is always light.
+- When adding a new admin surface, use the theme-reactive tokens (`bg-surface`, `text-slate`, `border-slate/*`, etc.) so it responds correctly to the toggle; only opt a component out (static classes) if it must always render as a fixed light or fixed dark surface for a specific design reason like the two exceptions above.
 
 **Typography:**
-- Headings, logo lockup, page titles: a rounded geometric sans — **Poppins** (bold weights). It matches the logo's rounded Q terminals and phone-icon corners.
+- Headings, logo lockup, page titles: a rounded geometric sans — **Poppins** (bold weights).
 - Body text, tables, forms, dense admin UI: **Inter** — clean, high legibility at small sizes for data-entry speed.
 - Load both via `next/font/google`, expose as `--font-heading` / `--font-body` CSS variables. Do not import fonts via a CDN `<link>`.
 
-**Shape language:** rounded-xl cards and inputs, pill-shaped primary buttons (mirrors the logo's rounded phone body and circular Q), generous white space on a white/near-white base, teal dominant with amber used only as an accent — never let amber dominate a screen.
+**Shape language:** rounded-xl cards and inputs, pill-shaped primary buttons, generous white space on a white/near-white base, blue dominant with cyan used only as an accent — never let cyan dominate a screen.
 
 ---
 
