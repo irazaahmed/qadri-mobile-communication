@@ -4,9 +4,11 @@ import { getSaleById } from "@/lib/actions/sales";
 import { getCustomerById } from "@/lib/actions/customers";
 import { getPhoneById } from "@/lib/actions/phones";
 import { getAccessoryById } from "@/lib/actions/accessories";
-import { Badge } from "../../../_components/ui";
-import { formatCurrency, formatDate } from "../../../_lib/format";
+import { listPaymentsForSale } from "@/lib/actions/payments";
+import { Badge, Card, EmptyState, table, tableWrap, tdClass, thClass, trHover } from "../../../_components/ui";
+import { formatCurrency, formatDate, formatDateTime } from "../../../_lib/format";
 import { InvoiceActions } from "./invoice-actions";
+import { SalePaymentForm } from "../payment-form";
 
 const STATUS_BADGE = { PAID: "success", PARTIAL: "warning", UNPAID: "danger" } as const;
 
@@ -15,7 +17,10 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const sale = await getSaleById(id);
   if (!sale) notFound();
 
-  const customer = sale.customerId ? await getCustomerById(sale.customerId) : null;
+  const [customer, payments] = await Promise.all([
+    sale.customerId ? getCustomerById(sale.customerId) : Promise.resolve(null),
+    listPaymentsForSale(sale.id),
+  ]);
 
   const items = await Promise.all(
     sale.items.map(async (item) => {
@@ -140,6 +145,41 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
 
         <p className="mt-8 text-center text-xs text-gray-500">Thank you for shopping with Qadri Mobile Communication.</p>
       </div>
+
+      <Card className="mt-6 p-5 print:hidden">
+        <h2 className="mb-3 font-semibold text-brand-blue">Payments</h2>
+        {sale.status !== "PAID" && sale.customerId ? (
+          <div className="mb-4">
+            <SalePaymentForm saleId={sale.id} remaining={amountDue} />
+          </div>
+        ) : null}
+        {payments.length === 0 ? (
+          <EmptyState label="No payments recorded yet." />
+        ) : (
+          <div className={tableWrap}>
+            <table className={table}>
+              <thead>
+                <tr>
+                  <th className={thClass}>Date</th>
+                  <th className={thClass}>Amount</th>
+                  <th className={thClass}>Method</th>
+                  <th className={thClass}>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.id} className={trHover}>
+                    <td className={tdClass}>{formatDateTime(p.createdAt)}</td>
+                    <td className={tdClass}>{formatCurrency(p.amount.toString())}</td>
+                    <td className={tdClass}>{p.method}</td>
+                    <td className={tdClass}>{p.note ?? "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

@@ -3,8 +3,10 @@ import { getPurchaseById } from "@/lib/actions/purchases";
 import { getSupplierById } from "@/lib/actions/suppliers";
 import { getPhoneById } from "@/lib/actions/phones";
 import { getAccessoryById } from "@/lib/actions/accessories";
-import { Badge, Card, PageHeader, table, tableWrap, tdClass, thClass, trHover } from "../../_components/ui";
-import { formatCurrency, formatDate } from "../../_lib/format";
+import { listPaymentsForPurchase } from "@/lib/actions/payments";
+import { Badge, Card, EmptyState, PageHeader, table, tableWrap, tdClass, thClass, trHover } from "../../_components/ui";
+import { formatCurrency, formatDate, formatDateTime } from "../../_lib/format";
+import { PurchasePaymentForm } from "./payment-form";
 
 const STATUS_BADGE = { PAID: "success", PARTIAL: "warning", UNPAID: "danger" } as const;
 
@@ -13,7 +15,11 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
   const purchase = await getPurchaseById(id);
   if (!purchase) notFound();
 
-  const supplier = await getSupplierById(purchase.supplierId);
+  const [supplier, payments] = await Promise.all([
+    getSupplierById(purchase.supplierId),
+    listPaymentsForPurchase(purchase.id),
+  ]);
+  const remaining = Number(purchase.totalAmount) - Number(purchase.paidAmount);
 
   const items = await Promise.all(
     purchase.items.map(async (item) => {
@@ -96,6 +102,41 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </tbody>
         </table>
       </div>
+
+      <Card className="mt-6 p-5">
+        <h2 className="mb-3 font-semibold text-brand-blue">Payments</h2>
+        {purchase.status !== "PAID" ? (
+          <div className="mb-4">
+            <PurchasePaymentForm purchaseId={purchase.id} remaining={remaining} />
+          </div>
+        ) : null}
+        {payments.length === 0 ? (
+          <EmptyState label="No payments recorded yet." />
+        ) : (
+          <div className={tableWrap}>
+            <table className={table}>
+              <thead>
+                <tr>
+                  <th className={thClass}>Date</th>
+                  <th className={thClass}>Amount</th>
+                  <th className={thClass}>Method</th>
+                  <th className={thClass}>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.id} className={trHover}>
+                    <td className={tdClass}>{formatDateTime(p.createdAt)}</td>
+                    <td className={tdClass}>{formatCurrency(p.amount.toString())}</td>
+                    <td className={tdClass}>{p.method}</td>
+                    <td className={tdClass}>{p.note ?? "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
