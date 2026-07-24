@@ -14,7 +14,7 @@ export default async function NewPurchasePage() {
         subtitle="Multi-line invoice — mix phones and accessories. Supplier is optional for cash, required for credit."
       />
       <PurchaseForm
-        suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
+        suppliers={suppliers.map((s) => ({ id: s.id, name: s.name, phone: s.phone }))}
         accessoryNames={accessoryNames}
       />
     </div>
