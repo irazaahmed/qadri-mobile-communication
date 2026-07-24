@@ -38,8 +38,8 @@ export function Sidebar({
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <aside className="shrink-0 border-b border-white/10 bg-navy text-white print:hidden md:flex md:min-h-screen md:w-56 md:flex-col md:border-b-0 md:border-r">
-      <div className="flex items-center justify-between px-5 py-5 md:block md:pb-0">
+    <aside className="shrink-0 border-b border-white/10 bg-navy text-white shadow-xl print:hidden md:sticky md:top-0 md:flex md:h-screen md:w-56 md:flex-col md:self-start md:border-b-0 md:border-r">
+      <div className="flex items-center justify-between border-white/10 px-5 py-5 md:block md:border-b md:pb-4">
         <Link href="/admin" className="flex items-center gap-2" onClick={() => setIsOpen(false)}>
           <Image src="/logo-icon.png" alt="" width={28} height={28} className="shrink-0" />
           <span className="text-lg font-semibold leading-tight">Qadri Mobile</span>
@@ -58,7 +58,7 @@ export function Sidebar({
 
       <div className={`${isOpen ? "flex" : "hidden"} flex-col md:flex md:min-h-0 md:flex-1`}>
         <nav
-          className="flex flex-col gap-0.5 px-2 pb-4 md:flex-1 md:overflow-y-auto"
+          className="flex flex-col gap-1 px-2 py-3 md:flex-1 md:overflow-y-auto"
           onClick={() => setIsOpen(false)}
         >
           {NAV_ITEMS.map((item) => (
