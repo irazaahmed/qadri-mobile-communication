@@ -13,9 +13,9 @@ Each physical phone is its own `Phone` row — never aggregated, never a "quanti
 
 ## Status machine
 
-`IN_STOCK → SOLD → CLAIMED → WITH_SUPPLIER → RETURNED_TO_STOCK` (back to sellable) or terminal at any claim stage via `REFUNDED`/`REJECTED` (see [[claims-lifecycle]]). Only two places may change `Phone.status`:
+`IN_STOCK → SOLD → CLAIMED → WITH_SUPPLIER → CLAIMED → SOLD` (delivered back to the same customer) is the normal round trip. A claim can also end in `REFUNDED` (→ `IN_STOCK`, sellable again, since the shop keeps the unit instead of the customer) or `REJECTED` (→ `SOLD`, handed back to the customer unchanged) — see [[claims-lifecycle]]. There is no status representing "released into general stock as someone else's replacement" — a claimed item always returns to the customer who claimed it, never to a different buyer. Only two places may change `Phone.status`:
 - The sale action (`IN_STOCK → SOLD`). See [[purchase-sale-flow]].
-- Claim actions (everything from `CLAIMED` onward). Never let a purchase or sale action touch `CLAIMED`/`WITH_SUPPLIER`/`RETURNED_TO_STOCK`.
+- Claim actions (everything from `CLAIMED` onward). Never let a purchase or sale action touch `CLAIMED`/`WITH_SUPPLIER`.
 
 A phone can only be selected in a new sale if `status = IN_STOCK`. A phone can only be claimed if `status = SOLD`.
 

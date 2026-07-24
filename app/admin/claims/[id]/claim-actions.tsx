@@ -35,7 +35,6 @@ export function ClaimActions({
   const [pending, startTransition] = useTransition();
 
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? "");
-  const [returnToStock, setReturnToStock] = useState(true);
   const [refundAmount, setRefundAmount] = useState(String(outstandingMax));
   const [rejectNote, setRejectNote] = useState("");
   const [showReject, setShowReject] = useState(false);
@@ -85,11 +84,7 @@ export function ClaimActions({
 
         {status === "SENT_TO_SUPPLIER" ? (
           <div className="flex flex-wrap items-end gap-3">
-            <label className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" checked={returnToStock} onChange={(e) => setReturnToStock(e.target.checked)} />
-              Return unit to sellable stock
-            </label>
-            <Button type="button" disabled={pending} onClick={() => run(() => receiveClaimFromSupplierAction(claimId, returnToStock))}>
+            <Button type="button" disabled={pending} onClick={() => run(() => receiveClaimFromSupplierAction(claimId))}>
               Mark received from supplier
             </Button>
           </div>

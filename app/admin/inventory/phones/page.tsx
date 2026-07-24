@@ -21,7 +21,6 @@ const STATUS_OPTIONS: PhoneStatus[] = [
   "SOLD",
   "CLAIMED",
   "WITH_SUPPLIER",
-  "RETURNED_TO_STOCK",
 ];
 
 const STATUS_BADGE: Record<PhoneStatus, "success" | "slate" | "warning" | "danger"> = {
@@ -29,7 +28,6 @@ const STATUS_BADGE: Record<PhoneStatus, "success" | "slate" | "warning" | "dange
   SOLD: "slate",
   CLAIMED: "warning",
   WITH_SUPPLIER: "warning",
-  RETURNED_TO_STOCK: "success",
 };
 
 const WARRANTY_BADGE = {

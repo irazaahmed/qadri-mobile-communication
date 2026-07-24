@@ -13,10 +13,23 @@ import { Prisma, PhoneStatus, PurchaseItemType, type Claim, type Customer, type 
  * RECEIVED_FROM_CUSTOMER -> SENT_TO_SUPPLIER -> RECEIVED_FROM_SUPPLIER ->
  * DELIVERED_TO_CUSTOMER, or jumps to a terminal state (REFUNDED/REJECTED)
  * from wherever it currently sits. Each stage's timestamp is set exactly
- * once. Phone.status transitions for CLAIMED/WITH_SUPPLIER/
- * RETURNED_TO_STOCK belong exclusively here — purchase/sale code never sets
- * them, and per the skill, REFUNDED/REJECTED/DELIVERED_TO_CUSTOMER do not
- * touch Phone.status (only stages 1-3 do).
+ * once. Phone.status transitions for CLAIMED/WITH_SUPPLIER belong
+ * exclusively here — purchase/sale code never sets them.
+ *
+ * A claimed item always goes back to the customer who claimed it — there is
+ * no "return the supplier's replacement to general stock" path. The only
+ * ways a claim resolves:
+ *   - DELIVERED_TO_CUSTOMER: item (repaired original or supplier
+ *     replacement) handed back to the same customer -> Phone.status = SOLD
+ *     (it's exactly the same situation as any other sold, in-warranty unit).
+ *   - REFUNDED: customer took money instead of the item -> the physical
+ *     unit stays with the shop and becomes sellable again -> Phone.status
+ *     = IN_STOCK. Only applies if the phone is currently CLAIMED (i.e.
+ *     physically in hand); if it's still WITH_SUPPLIER at refund time, the
+ *     status is left alone since we don't have the unit yet — resolve it
+ *     manually once it's back.
+ *   - REJECTED: claim denied, item handed back to the customer exactly as
+ *     it was -> Phone.status = SOLD. Same WITH_SUPPLIER caveat as REFUNDED.
  */
 
 export interface CreateClaimInput {
@@ -97,15 +110,7 @@ export async function sendClaimToSupplier(claimId: string, input: SendClaimToSup
   });
 }
 
-export interface ReceiveClaimFromSupplierInput {
-  /** Judgment call surfaced in the UI: does the returned unit go back to sellable stock, or stay held for redelivery to the original customer? */
-  returnToStock: boolean;
-}
-
-export async function receiveClaimFromSupplier(
-  claimId: string,
-  input: ReceiveClaimFromSupplierInput
-): Promise<Claim> {
+export async function receiveClaimFromSupplier(claimId: string): Promise<Claim> {
   return prisma.$transaction(async (tx) => {
     const claim = await tx.claim.findUniqueOrThrow({ where: { id: claimId } });
 
@@ -118,11 +123,9 @@ export async function receiveClaimFromSupplier(
       data: { status: "RECEIVED_FROM_SUPPLIER", receivedFromSupplierAt: new Date() },
     });
 
+    // Item is back in the shop's hands, held for redelivery to the original customer.
     if (claim.itemType === "PHONE" && claim.phoneId) {
-      await tx.phone.update({
-        where: { id: claim.phoneId },
-        data: { status: input.returnToStock ? PhoneStatus.RETURNED_TO_STOCK : PhoneStatus.CLAIMED },
-      });
+      await tx.phone.update({ where: { id: claim.phoneId }, data: { status: PhoneStatus.CLAIMED } });
     }
 
     return updated;
@@ -137,10 +140,17 @@ export async function deliverClaimToCustomer(claimId: string): Promise<Claim> {
       throw new Error(`Claim ${claim.claimNumber} is at ${claim.status}, not RECEIVED_FROM_SUPPLIER.`);
     }
 
-    return tx.claim.update({
+    const updated = await tx.claim.update({
       where: { id: claimId },
       data: { status: "DELIVERED_TO_CUSTOMER", deliveredToCustomerAt: new Date() },
     });
+
+    // Item is back with the customer — same as any other sold unit.
+    if (claim.itemType === "PHONE" && claim.phoneId) {
+      await tx.phone.update({ where: { id: claim.phoneId }, data: { status: PhoneStatus.SOLD } });
+    }
+
+    return updated;
   });
 }
 
@@ -167,6 +177,17 @@ export async function refundClaim(claimId: string, input: RefundClaimInput): Pro
       where: { id: claimId },
       data: { status: "REFUNDED", resolutionNote: `Refunded ${amount.toString()}` },
     });
+
+    // Customer took money instead of the item — if the unit is physically in
+    // hand (CLAIMED), it becomes sellable again. If it's still WITH_SUPPLIER
+    // we don't have it yet, so leave the status alone and resolve manually
+    // once it's back.
+    if (claim.itemType === "PHONE" && claim.phoneId) {
+      const phone = await tx.phone.findUniqueOrThrow({ where: { id: claim.phoneId } });
+      if (phone.status === PhoneStatus.CLAIMED) {
+        await tx.phone.update({ where: { id: claim.phoneId }, data: { status: PhoneStatus.IN_STOCK } });
+      }
+    }
 
     await appendCustomerLedger(tx, {
       customerId: claim.customerId,
@@ -203,10 +224,22 @@ export async function rejectClaim(claimId: string, input: RejectClaimInput): Pro
       throw new Error(`Claim ${claim.claimNumber} is already ${claim.status} — cannot reject.`);
     }
 
-    return tx.claim.update({
+    const updated = await tx.claim.update({
       where: { id: claimId },
       data: { status: "REJECTED", resolutionNote: input.resolutionNote.trim() },
     });
+
+    // Claim denied — item handed back to the customer exactly as it was. If
+    // it's still WITH_SUPPLIER we don't have it yet, so leave the status
+    // alone and resolve manually once it's back.
+    if (claim.itemType === "PHONE" && claim.phoneId) {
+      const phone = await tx.phone.findUniqueOrThrow({ where: { id: claim.phoneId } });
+      if (phone.status === PhoneStatus.CLAIMED) {
+        await tx.phone.update({ where: { id: claim.phoneId }, data: { status: PhoneStatus.SOLD } });
+      }
+    }
+
+    return updated;
   });
 }
 

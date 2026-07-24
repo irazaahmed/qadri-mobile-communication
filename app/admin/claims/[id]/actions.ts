@@ -27,9 +27,9 @@ export async function sendClaimToSupplierAction(claimId: string, supplierId: str
   }
 }
 
-export async function receiveClaimFromSupplierAction(claimId: string, returnToStock: boolean): Promise<ClaimActionResult> {
+export async function receiveClaimFromSupplierAction(claimId: string): Promise<ClaimActionResult> {
   try {
-    await receiveClaimFromSupplier(claimId, { returnToStock });
+    await receiveClaimFromSupplier(claimId);
     revalidateClaim(claimId);
     return { ok: true };
   } catch (error) {

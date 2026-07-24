@@ -139,9 +139,9 @@ enum PhoneCondition {
 enum PhoneStatus {
   IN_STOCK
   SOLD
-  CLAIMED           // currently with us, claimed back from a customer
+  CLAIMED           // currently with us, claimed back from a customer (or back from
+                     // supplier, awaiting redelivery to that same customer)
   WITH_SUPPLIER     // sent to supplier/company for warranty exchange
-  RETURNED_TO_STOCK // came back from supplier as a replacement, re-enters stock
 }
 
 enum PurchaseItemType {
@@ -449,14 +449,16 @@ One shared flow, `direction` determines which ledger it touches:
 Dashboard sections "Payable to Suppliers" and "Receivable from Customers": list parties with an outstanding balance, oldest-due-first, overdue entries (`dueDate < now()`) visually flagged — computed at query time, no cron.
 
 ### 4.6 Claims / Returns (full lifecycle)
-Tracks a customer-initiated return/warranty complaint end to end:
+Tracks a customer-initiated return/warranty complaint end to end. A claimed item always goes back to the customer who claimed it — there is no path that releases a supplier's replacement into general stock for a different buyer:
 1. **`RECEIVED_FROM_CUSTOMER`** — admin logs the claim against a sold `Phone` or `Accessory` line: customer, reason, quantity (if accessory). `Phone.status` → `CLAIMED` if a phone.
 2. **`SENT_TO_SUPPLIER`** — admin records which `Supplier` the item was forwarded to and `sentToSupplierAt`. `Phone.status` → `WITH_SUPPLIER`.
-3. **`RECEIVED_FROM_SUPPLIER`** — supplier sends back a replacement/repaired unit, `receivedFromSupplierAt` recorded. `Phone.status` → `RETURNED_TO_STOCK` (re-enters sellable stock) or stays `CLAIMED` if awaiting redelivery to the same customer.
-4. **`DELIVERED_TO_CUSTOMER`** — the resolved item (replacement or repaired original) is handed back to the customer, `deliveredToCustomerAt` recorded.
-5. Alternate terminal states: **`REFUNDED`** (money returned instead of item — creates `CustomerLedgerEntry(type: CLAIM_REFUND, -amount)` and `CashLedgerEntry(-amount, sourceType: CLAIM_REFUND)`) or **`REJECTED`** (claim denied, no financial effect).
+3. **`RECEIVED_FROM_SUPPLIER`** — supplier sends back a replacement/repaired unit, `receivedFromSupplierAt` recorded. `Phone.status` → `CLAIMED` (back in the shop's hands, held for redelivery to the same customer).
+4. **`DELIVERED_TO_CUSTOMER`** — the resolved item (replacement or repaired original) is handed back to the same customer, `deliveredToCustomerAt` recorded. `Phone.status` → `SOLD` — it's exactly the same situation as any other sold, in-warranty unit.
+5. Alternate terminal states, reachable from any non-terminal stage:
+   - **`REFUNDED`** — money returned instead of item. Creates `CustomerLedgerEntry(type: CLAIM_REFUND, -amount)` and `CashLedgerEntry(-amount, sourceType: CLAIM_REFUND)`. If the phone is physically in hand (`status = CLAIMED`), it becomes sellable again → `Phone.status` → `IN_STOCK`. If it's still `WITH_SUPPLIER`, leave the status alone — resolve manually once it's physically returned.
+   - **`REJECTED`** — claim denied, item handed back to the customer unchanged, no financial effect. If `status = CLAIMED`, `Phone.status` → `SOLD` (same `WITH_SUPPLIER` caveat as above).
 
-Claims list view must show, per claim: current stage, how long it's been sitting with the supplier (flag if stuck), and full timestamp trail. This is the only place `Phone.status` values `CLAIMED` / `WITH_SUPPLIER` / `RETURNED_TO_STOCK` are set.
+Claims list view must show, per claim: current stage, how long it's been sitting with the supplier (flag if stuck), and full timestamp trail. This is the only place `Phone.status` values `CLAIMED` / `WITH_SUPPLIER` are set.
 
 ### 4.7 Invoices
 Sale invoice (multi-line) rendered as a print-optimized HTML page (`@media print`, browser print-to-PDF — no canvas PDF library, keeps the door open for Urdu text later and avoids the ligature-rendering problems Badar Natural Foods hit with canvas-based PDF renderers). Includes: logo (full lockup from `public/QMC logo 2.0.png`), invoice number, date, customer name/phone if present, line items (phone: brand/model/storage/color/IMEI; accessory: name/variant/qty), rate, subtotal, total, payment type, paidAmount, amountDue.

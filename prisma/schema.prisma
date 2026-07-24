@@ -51,7 +51,6 @@ enum PhoneStatus {
   SOLD
   CLAIMED
   WITH_SUPPLIER
-  RETURNED_TO_STOCK
 }
 
 enum PurchaseItemType {
