@@ -9,7 +9,10 @@ export default async function NewPurchasePage() {
 
   return (
     <div>
-      <PageHeader title="New purchase" subtitle="Multi-line invoice — mix phones and accessories from one supplier." />
+      <PageHeader
+        title="New purchase"
+        subtitle="Multi-line invoice — mix phones and accessories. Supplier is optional for cash, required for credit."
+      />
       <PurchaseForm
         suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
         accessoryNames={accessoryNames}

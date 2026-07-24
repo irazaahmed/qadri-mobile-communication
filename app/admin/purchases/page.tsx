@@ -99,7 +99,7 @@ export default async function PurchasesPage({
                       </a>
                     </td>
                     <td className={tdClass}>{formatDate(p.createdAt)}</td>
-                    <td className={tdClass}>{supplierName.get(p.supplierId) ?? "-"}</td>
+                    <td className={tdClass}>{(p.supplierId && supplierName.get(p.supplierId)) || "-"}</td>
                     <td className={tdClass}>{p.items.length}</td>
                     <td className={tdClass}>{p.paymentType}</td>
                     <td className={tdClass}>{formatCurrency(p.totalAmount.toString())}</td>

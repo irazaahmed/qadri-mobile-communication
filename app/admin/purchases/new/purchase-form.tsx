@@ -106,8 +106,8 @@ export function PurchaseForm({
     e.preventDefault();
     setError(null);
 
-    if (!supplierId) {
-      setError("Select a supplier.");
+    if (paymentType === "CREDIT" && !supplierId) {
+      setError("Select a supplier for a credit purchase (payable must be tracked against a supplier).");
       return;
     }
     if (lines.length === 0) {
@@ -161,7 +161,7 @@ export function PurchaseForm({
 
     startTransition(async () => {
       const result = await createPurchaseAction({
-        supplierId,
+        supplierId: supplierId || null,
         paymentType,
         creditDays: paymentType === "CREDIT" ? Number(creditDays) : null,
         items,
@@ -180,9 +180,11 @@ export function PurchaseForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <Card className="p-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Field label="Supplier *">
-            <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} required>
-              <option value="">— select —</option>
+          <Field
+            label={paymentType === "CREDIT" ? "Supplier *" : "Supplier (optional for cash)"}
+          >
+            <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">— none —</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}

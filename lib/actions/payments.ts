@@ -55,6 +55,10 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
         throw new Error(`Payment of ${amount.toString()} exceeds the outstanding balance of ${remaining.toString()}.`);
       }
 
+      if (!purchase.supplierId) {
+        throw new Error(`Purchase ${purchase.invoiceNumber} has no supplier to pay — this shouldn't happen for a CREDIT purchase.`);
+      }
+
       const payment = await tx.payment.create({
         data: {
           direction: PaymentDirection.PAYABLE,

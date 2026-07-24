@@ -24,14 +24,21 @@ import {
  * `prisma.$transaction`, sequential server-generated "PUR-0001" invoice
  * numbers, SupplierLedgerEntry + CashLedgerEntry writes.
  *
+ * Supplier is optional — a cash purchase may have no supplier record (e.g.
+ * a one-off street purchase). Required for CREDIT, since a payable balance
+ * must be tracked against somebody.
+ *
  * Cash vs credit:
- * - CASH: SupplierLedgerEntry(PURCHASE, +total) then a matching
- *   SupplierLedgerEntry(PAYMENT, -total) — net payable effect zero, logged
- *   for a clean history — backed by a real Payment row (direction PAYABLE),
- *   plus CashLedgerEntry(-total, sourceType "PURCHASE").
- * - CREDIT: dueDate = createdAt + creditDays, SupplierLedgerEntry(PURCHASE,
- *   +total) only (running payable increases). No CashLedgerEntry — no cash
- *   has moved yet.
+ * - CASH: if a supplier was picked, SupplierLedgerEntry(PURCHASE, +total)
+ *   then a matching SupplierLedgerEntry(PAYMENT, -total) — net payable
+ *   effect zero, logged for a clean history — backed by a real Payment row
+ *   (direction PAYABLE). If no supplier, skip both ledger entries and the
+ *   Payment row (nothing to track them against). Either way,
+ *   CashLedgerEntry(-total, sourceType "PURCHASE") always fires — cash left
+ *   the shop regardless of whether a supplier was named.
+ * - CREDIT: requires a supplierId. dueDate = createdAt + creditDays,
+ *   SupplierLedgerEntry(PURCHASE, +total) only (running payable increases).
+ *   No CashLedgerEntry — no cash has moved yet.
  */
 
 export interface PurchasePhoneLineInput {
@@ -62,7 +69,8 @@ export interface PurchaseAccessoryLineInput {
 export type PurchaseLineInput = PurchasePhoneLineInput | PurchaseAccessoryLineInput;
 
 export interface CreatePurchaseInput {
-  supplierId: string;
+  /** Optional — a cash purchase may have no supplier record. Required for CREDIT. */
+  supplierId?: string | null;
   paymentType: PaymentType;
   /** Required (and used) only when paymentType === "CREDIT". */
   creditDays?: number | null;
@@ -76,8 +84,13 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
     throw new Error("Purchase must have at least one line item.");
   }
 
-  if (input.paymentType === PaymentType.CREDIT && !input.creditDays) {
-    throw new Error("creditDays is required for a CREDIT purchase.");
+  if (input.paymentType === PaymentType.CREDIT) {
+    if (!input.creditDays) {
+      throw new Error("creditDays is required for a CREDIT purchase.");
+    }
+    if (!input.supplierId) {
+      throw new Error("supplierId is required for a CREDIT purchase (payable must be tracked against a supplier).");
+    }
   }
 
   for (const line of input.items) {
@@ -101,13 +114,14 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
     const invoiceNumber = await generatePurchaseInvoiceNumber(tx);
     const now = new Date();
     const isCash = input.paymentType === PaymentType.CASH;
+    const supplierId = input.supplierId || null;
     const dueDate =
       !isCash && input.creditDays ? new Date(now.getTime() + input.creditDays * 86_400_000) : null;
 
     const purchase = await tx.purchase.create({
       data: {
         invoiceNumber,
-        supplierId: input.supplierId,
+        supplierId: supplierId ?? undefined,
         paymentType: input.paymentType,
         creditDays: isCash ? null : input.creditDays ?? null,
         dueDate,
@@ -128,7 +142,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
           condition: line.condition,
           warrantyMonths: line.warrantyMonths,
           costPrice: rate,
-          supplierId: input.supplierId,
+          supplierId,
         });
 
         await tx.purchaseItem.create({
@@ -166,33 +180,35 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
     }
 
     if (isCash) {
-      const payment = await tx.payment.create({
-        data: {
-          direction: PaymentDirection.PAYABLE,
-          supplierId: input.supplierId,
+      if (supplierId) {
+        const payment = await tx.payment.create({
+          data: {
+            direction: PaymentDirection.PAYABLE,
+            supplierId,
+            purchaseId: purchase.id,
+            amount: totalAmount,
+            method: PaymentMethod.CASH,
+            note: `Immediate cash settlement for purchase ${invoiceNumber}`,
+          },
+        });
+
+        await appendSupplierLedger(tx, {
+          supplierId,
           purchaseId: purchase.id,
+          type: "PURCHASE",
           amount: totalAmount,
-          method: PaymentMethod.CASH,
-          note: `Immediate cash settlement for purchase ${invoiceNumber}`,
-        },
-      });
+          note: `Purchase ${invoiceNumber}`,
+        });
 
-      await appendSupplierLedger(tx, {
-        supplierId: input.supplierId,
-        purchaseId: purchase.id,
-        type: "PURCHASE",
-        amount: totalAmount,
-        note: `Purchase ${invoiceNumber}`,
-      });
-
-      await appendSupplierLedger(tx, {
-        supplierId: input.supplierId,
-        purchaseId: purchase.id,
-        paymentId: payment.id,
-        type: "PAYMENT",
-        amount: totalAmount.negated(),
-        note: `Cash payment for purchase ${invoiceNumber}`,
-      });
+        await appendSupplierLedger(tx, {
+          supplierId,
+          purchaseId: purchase.id,
+          paymentId: payment.id,
+          type: "PAYMENT",
+          amount: totalAmount.negated(),
+          note: `Cash payment for purchase ${invoiceNumber}`,
+        });
+      }
 
       await appendCashLedger(tx, {
         sourceType: "PURCHASE",
@@ -201,8 +217,9 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
         note: `Purchase ${invoiceNumber}`,
       });
     } else {
+      // Validated above: CREDIT always has a supplierId.
       await appendSupplierLedger(tx, {
-        supplierId: input.supplierId,
+        supplierId: supplierId!,
         purchaseId: purchase.id,
         type: "PURCHASE",
         amount: totalAmount,

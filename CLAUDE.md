@@ -270,8 +270,8 @@ model Accessory {
 model Purchase {
   id             String        @id @default(cuid())
   invoiceNumber  String        @unique // "PUR-0001"
-  supplierId     String
-  supplier       Supplier      @relation(fields: [supplierId], references: [id])
+  supplierId     String?       // optional — required only for CREDIT, see §4.3
+  supplier       Supplier?     @relation(fields: [supplierId], references: [id])
   paymentType    PaymentType
   creditDays     Int?
   dueDate        DateTime?
@@ -425,12 +425,12 @@ Each phone purchased is its own row (IMEI is the unique key), never aggregated �
 Aggregate quantity stock, upserted on purchase like Hafeez Communication's `Product`: match on `[name, brand, variant]`. If found, increment `quantity` and update `costPrice` to the latest purchase rate. If not found, create new row. A separate "Edit" action can change price/specs without touching quantity.
 
 ### 4.3 Purchases
-Multi-line form against one `Supplier`: each line is either a Phone (full per-unit form: IMEI, brand, model, storage, color, condition, warranty, cost) or an Accessory (pick existing or create + quantity + rate). On save, in one `prisma.$transaction`:
-1. For each PHONE line: create the `Phone` row (`status: IN_STOCK`), then the `PurchaseItem` referencing it.
+Multi-line form, optionally against a `Supplier`: each line is either a Phone (full per-unit form: IMEI, brand, model, storage, color, condition, warranty, cost) or an Accessory (pick existing or create + quantity + rate). Supplier is optional for a CASH purchase (e.g. a one-off street purchase with no ongoing supplier relationship) but required for CREDIT, since a payable balance must be tracked against somebody — same shape as `Sale.customerId` (§4.4). On save, in one `prisma.$transaction`:
+1. For each PHONE line: create the `Phone` row (`status: IN_STOCK`, `supplierId` from the header, may be null), then the `PurchaseItem` referencing it.
 2. For each ACCESSORY line: upsert the `Accessory` per 4.2, increment `quantity`, create the `PurchaseItem`.
 3. Sum `lineTotal`s into `Purchase.totalAmount`.
 4. If `paymentType = CREDIT`: compute `dueDate = createdAt + creditDays`, create `SupplierLedgerEntry(type: PURCHASE, +totalAmount)`, update running payable.
-5. If `paymentType = CASH`: still log the `SupplierLedgerEntry` for history (net payable effect zero — log a matching payment same timestamp so the ledger reads clean, same convention as Badar Natural Foods), and write `CashLedgerEntry(-totalAmount, sourceType: PURCHASE)`.
+5. If `paymentType = CASH` and a supplier was picked: still log the `SupplierLedgerEntry` for history (net payable effect zero — log a matching payment same timestamp so the ledger reads clean, same convention as Badar Natural Foods). If no supplier was picked, skip both `SupplierLedgerEntry` writes and the `Payment` row — there's nothing to track them against. Either way, write `CashLedgerEntry(-totalAmount, sourceType: PURCHASE)`.
 
 ### 4.4 Sales
 Multi-line form: pick phones (search by IMEI/model, only `IN_STOCK`) and/or accessories (search + quantity), optional customer (search by phone or inline-add, upsert by phone number). On save, in one `prisma.$transaction`:

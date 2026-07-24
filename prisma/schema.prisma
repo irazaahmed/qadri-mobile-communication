@@ -178,8 +178,8 @@ model Accessory {
 model Purchase {
   id            String         @id @default(cuid())
   invoiceNumber String         @unique
-  supplierId    String
-  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  supplierId    String?
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
   paymentType   PaymentType
   creditDays    Int?
   dueDate       DateTime?

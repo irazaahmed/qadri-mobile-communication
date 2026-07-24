@@ -9,14 +9,16 @@ One `Purchase` or `Sale` is a header row with N `PurchaseItem`/`SaleItem` lines,
 
 ## Purchase
 
-Form: pick a `Supplier`, add lines. A PHONE line captures the full per-unit form (IMEI, brand, model, storage, color, condition, warrantyMonths, cost) — this line CREATES the `Phone` row. An ACCESSORY line picks/creates an accessory and enters quantity + rate.
+Form: optionally pick a `Supplier` (search-existing UX like the customer picker), add lines. A PHONE line captures the full per-unit form (IMEI, brand, model, storage, color, condition, warrantyMonths, cost) — this line CREATES the `Phone` row. An ACCESSORY line picks/creates an accessory and enters quantity + rate.
+
+Supplier is optional overall, same shape as `Sale.customerId`: a CASH purchase may have no supplier record (e.g. a one-off street purchase); a CREDIT purchase always requires one, since a payable balance must be tracked against somebody. Validate this server-side, not just in the UI.
 
 In one `prisma.$transaction`:
-1. For each PHONE line: create the `Phone` row (`status: IN_STOCK`), then the `PurchaseItem` referencing it via `phoneId` (`quantity` stays null on phone lines — always exactly 1 unit).
+1. For each PHONE line: create the `Phone` row (`status: IN_STOCK`, `supplierId` from the header, may be null), then the `PurchaseItem` referencing it via `phoneId` (`quantity` stays null on phone lines — always exactly 1 unit).
 2. For each ACCESSORY line: upsert per [[accessory-inventory]], increment `quantity`, create the `PurchaseItem` with `accessoryId` + `quantity`.
 3. Sum all `lineTotal`s into `Purchase.totalAmount`.
 4. `paymentType = CREDIT`: `dueDate = createdAt + creditDays`, `SupplierLedgerEntry(type: "PURCHASE", +totalAmount)`, update running payable.
-5. `paymentType = CASH`: still log the `SupplierLedgerEntry` for history (net payable effect zero — log a matching payment entry at the same timestamp so the ledger reads clean), and `CashLedgerEntry(-totalAmount, sourceType: "PURCHASE")`.
+5. `paymentType = CASH` with a supplier picked: still log the `SupplierLedgerEntry` for history (net payable effect zero — log a matching payment entry at the same timestamp so the ledger reads clean). `CASH` with no supplier: skip both `SupplierLedgerEntry` writes and the `Payment` row (nothing to track them against). Either way, `CashLedgerEntry(-totalAmount, sourceType: "PURCHASE")` always fires.
 
 Invoice number: `PUR-0001`, sequential, generated server-side inside the same transaction (never client-supplied, never reused if the transaction rolls back).
 

@@ -119,7 +119,7 @@ export async function getCreditReport(): Promise<CreditReportRow[]> {
       id: p.id,
       direction: "PAYABLE" as const,
       invoiceNumber: p.invoiceNumber,
-      partyName: p.supplier.name,
+      partyName: p.supplier?.name ?? "Unknown supplier",
       totalAmount: p.totalAmount.toString(),
       paidAmount: p.paidAmount.toString(),
       amountDue: p.totalAmount.minus(p.paidAmount).toString(),

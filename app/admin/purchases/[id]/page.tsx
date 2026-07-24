@@ -16,7 +16,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
   if (!purchase) notFound();
 
   const [supplier, payments] = await Promise.all([
-    getSupplierById(purchase.supplierId),
+    purchase.supplierId ? getSupplierById(purchase.supplierId) : Promise.resolve(null),
     listPaymentsForPurchase(purchase.id),
   ]);
   const remaining = Number(purchase.totalAmount) - Number(purchase.paidAmount);
@@ -39,7 +39,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
     <div>
       <PageHeader
         title={purchase.invoiceNumber}
-        subtitle={`${supplier?.name ?? "Unknown supplier"} — ${formatDate(purchase.createdAt)}`}
+        subtitle={`${supplier?.name ?? "No supplier"} — ${formatDate(purchase.createdAt)}`}
         actions={<Badge variant={STATUS_BADGE[purchase.status]}>{purchase.status}</Badge>}
       />
 

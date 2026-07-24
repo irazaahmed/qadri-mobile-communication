@@ -147,7 +147,7 @@ export async function getOutstandingPayables(limit = 10): Promise<OutstandingPay
   return purchases.map((p) => ({
     id: p.id,
     invoiceNumber: p.invoiceNumber,
-    supplierName: p.supplier.name,
+    supplierName: p.supplier?.name ?? "Unknown supplier",
     amountDue: p.totalAmount.minus(p.paidAmount).toString(),
     dueDate: p.dueDate ? p.dueDate.toISOString() : null,
     createdAt: p.createdAt.toISOString(),
