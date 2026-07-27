@@ -16,6 +16,7 @@ type PhoneLine = {
   key: string;
   itemType: "PHONE";
   imei: string;
+  quantity: string;
   brand: string;
   model: string;
   storage: string;
@@ -51,6 +52,7 @@ function newPhoneLine(): PhoneLine {
     key: nextKey(),
     itemType: "PHONE",
     imei: "",
+    quantity: "1",
     brand: "",
     model: "",
     storage: "",
@@ -78,7 +80,7 @@ function newAccessoryLine(): AccessoryLine {
 
 function lineTotal(line: Line): number {
   const rate = Number(line.rate) || 0;
-  if (line.itemType === "PHONE") return rate;
+  if (line.itemType === "PHONE") return rate * (Number(line.quantity) || 1);
   const qty = Number(line.quantity) || 0;
   return rate * qty;
 }
@@ -162,8 +164,19 @@ export function PurchaseForm({
 
     for (const line of lines) {
       if (line.itemType === "PHONE") {
-        if (!line.imei || !line.brand || !line.model || !line.rate) {
-          setError("Every phone line needs IMEI, brand, model and cost.");
+        if (!line.brand || !line.model || !line.rate) {
+          setError("Every phone line needs brand, model and cost.");
+          return;
+        }
+        const qty = Number(line.quantity) || 1;
+        if (line.imei.trim() && qty > 1) {
+          setError(
+            `Phone line for "${line.brand} ${line.model}" has a specific IMEI — quantity must be 1. Leave IMEI blank to bulk-add.`
+          );
+          return;
+        }
+        if (qty < 1) {
+          setError("Quantity must be a positive whole number.");
           return;
         }
       } else {
@@ -178,7 +191,8 @@ export function PurchaseForm({
       line.itemType === "PHONE"
         ? {
             itemType: "PHONE" as const,
-            imei: line.imei.trim(),
+            imei: line.imei.trim() || null,
+            quantity: Number(line.quantity) || 1,
             brand: line.brand.trim(),
             model: line.model.trim(),
             storage: line.storage.trim() || null,
@@ -358,8 +372,16 @@ export function PurchaseForm({
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <Field label="IMEI *">
+                <Field label="IMEI" hint="Leave blank to bulk-add via Quantity.">
                   <Input value={line.imei} onChange={(e) => updateLine(line.key, { imei: e.target.value })} />
+                </Field>
+                <Field label="Quantity" hint="Only used when IMEI is blank.">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={line.quantity}
+                    onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
+                  />
                 </Field>
                 <Field label="Brand *">
                   <Input value={line.brand} onChange={(e) => updateLine(line.key, { brand: e.target.value })} />

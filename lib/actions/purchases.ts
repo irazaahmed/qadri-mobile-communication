@@ -43,7 +43,8 @@ import {
 
 export interface PurchasePhoneLineInput {
   itemType: "PHONE";
-  imei: string;
+  /** Optional — leave blank to bulk-add `quantity` identical units with no per-piece IMEI. */
+  imei?: string | null;
   brand: string;
   model: string;
   storage?: string | null;
@@ -51,6 +52,8 @@ export interface PurchasePhoneLineInput {
   condition: PhoneCondition;
   warrantyMonths?: number | null;
   rate: number | string; // cost per unit (this line's cost)
+  /** Bulk-add count for identical units. Ignored (forced to 1) when `imei` is set. Defaults to 1. */
+  quantity?: number;
 }
 
 export interface PurchaseAccessoryLineInput {
@@ -97,12 +100,24 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
     if (line.itemType === "ACCESSORY" && line.quantity <= 0) {
       throw new Error(`Accessory line for "${line.name}" must have quantity > 0.`);
     }
+    if (line.itemType === "PHONE") {
+      const imei = line.imei?.trim() ? line.imei.trim() : null;
+      const quantity = line.quantity && line.quantity > 0 ? Math.floor(line.quantity) : 1;
+      if (imei && quantity > 1) {
+        throw new Error(
+          `Phone line for "${line.brand} ${line.model}" has a specific IMEI — quantity must be 1. Leave IMEI blank to bulk-add.`
+        );
+      }
+    }
   }
 
   const computedLines = input.items.map((line) => {
     const rate = new Prisma.Decimal(line.rate);
-    const lineTotal = line.itemType === "PHONE" ? rate : rate.mul(line.quantity);
-    return { line, rate, lineTotal };
+    if (line.itemType === "PHONE") {
+      const quantity = line.quantity && line.quantity > 0 ? Math.floor(line.quantity) : 1;
+      return { line, rate, lineTotal: rate.mul(quantity), quantity };
+    }
+    return { line, rate, lineTotal: rate.mul(line.quantity), quantity: line.quantity };
   });
 
   const totalAmount = computedLines.reduce(
@@ -131,29 +146,36 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
       },
     });
 
-    for (const { line, rate, lineTotal } of computedLines) {
+    for (const { line, rate, lineTotal, quantity } of computedLines) {
       if (line.itemType === "PHONE") {
-        const phone = await createPhoneStock(tx, {
-          imei: line.imei,
-          brand: line.brand,
-          model: line.model,
-          storage: line.storage,
-          color: line.color,
-          condition: line.condition,
-          warrantyMonths: line.warrantyMonths,
-          costPrice: rate,
-          supplierId,
-        });
+        // A phone PurchaseItem always represents exactly one physical unit
+        // (schema invariant — quantity is PHONE-line-only, for bulk entry
+        // convenience) so a bulk line fans out into `quantity` separate
+        // Phone + PurchaseItem pairs, each with imei: null.
+        const imei = line.imei?.trim() ? line.imei.trim() : null;
+        for (let i = 0; i < quantity; i++) {
+          const phone = await createPhoneStock(tx, {
+            imei: quantity === 1 ? imei : null,
+            brand: line.brand,
+            model: line.model,
+            storage: line.storage,
+            color: line.color,
+            condition: line.condition,
+            warrantyMonths: line.warrantyMonths,
+            costPrice: rate,
+            supplierId,
+          });
 
-        await tx.purchaseItem.create({
-          data: {
-            purchaseId: purchase.id,
-            itemType: PurchaseItemType.PHONE,
-            phoneId: phone.id,
-            rate,
-            lineTotal,
-          },
-        });
+          await tx.purchaseItem.create({
+            data: {
+              purchaseId: purchase.id,
+              itemType: PurchaseItemType.PHONE,
+              phoneId: phone.id,
+              rate,
+              lineTotal: rate,
+            },
+          });
+        }
       } else {
         const accessory = await upsertAccessoryStock(tx, {
           name: line.name,

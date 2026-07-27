@@ -14,11 +14,14 @@ export function formatCurrency(value: string | number | null | undefined): strin
   return `Rs ${num.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+/** All display timestamps render in Pakistan Standard Time (UTC+5, no DST) regardless of server timezone — storage stays UTC via `DateTime @default(now())`, only display converts. */
+const PKT_TIMEZONE = "Asia/Karachi";
+
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";
   const d = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: PKT_TIMEZONE });
 }
 
 export function formatDateTime(value: string | Date | null | undefined): string {
@@ -31,6 +34,7 @@ export function formatDateTime(value: string | Date | null | undefined): string 
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: PKT_TIMEZONE,
   });
 }
 

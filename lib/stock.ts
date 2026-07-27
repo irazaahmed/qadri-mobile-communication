@@ -16,7 +16,7 @@ import { Prisma, PhoneCondition, PhoneStatus } from "@prisma/client";
 type Tx = Prisma.TransactionClient;
 
 export interface CreatePhoneStockInput {
-  imei: string;
+  imei?: string | null;
   brand: string;
   model: string;
   storage?: string | null;
@@ -29,19 +29,26 @@ export interface CreatePhoneStockInput {
 
 /**
  * Creates a new Phone row for a PHONE purchase line. Always `status: IN_STOCK`.
- * IMEI uniqueness is enforced at the DB level, but we pre-check inside the
- * transaction and throw a friendly error rather than letting a raw unique
- * constraint violation surface to the UI.
+ * IMEI is optional — leave it blank for a bulk-purchased unit with no
+ * per-piece IMEI on file yet (Postgres allows multiple NULLs under a unique
+ * index, so this never collides). When an IMEI is given, uniqueness is
+ * enforced at the DB level, but we pre-check inside the transaction and
+ * throw a friendly error rather than letting a raw unique constraint
+ * violation surface to the UI.
  */
 export async function createPhoneStock(tx: Tx, input: CreatePhoneStockInput) {
-  const existing = await tx.phone.findUnique({ where: { imei: input.imei } });
-  if (existing) {
-    throw new Error(`IMEI already exists: ${input.imei} (already in stock as ${existing.brand} ${existing.model}, status ${existing.status}).`);
+  const imei = input.imei?.trim() ? input.imei.trim() : null;
+
+  if (imei) {
+    const existing = await tx.phone.findUnique({ where: { imei } });
+    if (existing) {
+      throw new Error(`IMEI already exists: ${imei} (already in stock as ${existing.brand} ${existing.model}, status ${existing.status}).`);
+    }
   }
 
   return tx.phone.create({
     data: {
-      imei: input.imei,
+      imei,
       brand: input.brand,
       model: input.model,
       storage: input.storage ?? null,
