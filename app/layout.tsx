@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Poppins, Inter } from "next/font/google";
 import "./globals.css";
 
@@ -16,6 +16,18 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Qadri Mobile Communication",
   description: "Qadri Mobile Communication — phones & accessories, admin panel",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Qadri Mobile",
+  },
+  icons: {
+    apple: "/icon-192x192.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a56c4",
 };
 
 // Blocking, runs before first paint so a stored dark preference never flashes

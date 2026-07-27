@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { NavLink } from "./nav-link";
 import { ThemeToggle } from "./theme-toggle";
+import { InstallAppButton } from "./install-app-button";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard" },
@@ -67,6 +68,7 @@ export function Sidebar({
         <div className="space-y-2 border-t border-white/10 px-5 py-4 md:mt-auto">
           {userEmail ? <p className="truncate text-xs text-white/60">{userEmail}</p> : null}
           <ThemeToggle />
+          <InstallAppButton />
           <form action={signOutAction}>
             <button
               type="submit"

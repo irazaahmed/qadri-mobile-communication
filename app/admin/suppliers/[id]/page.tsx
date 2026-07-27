@@ -15,6 +15,7 @@ import {
   trHover,
 } from "../../_components/ui";
 import { formatCurrency, formatDateTime, isOverdue, formatDate } from "../../_lib/format";
+import { SupplierBulkPaymentForm } from "./payment-form";
 
 export default async function SupplierLedgerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,6 +28,7 @@ export default async function SupplierLedgerPage({ params }: { params: Promise<{
   if (!supplier) notFound();
 
   const currentBalance = ledger.length ? ledger[ledger.length - 1].balanceAfter.toString() : "0";
+  const outstandingAmount = Math.max(0, Number(currentBalance));
 
   return (
     <div>
@@ -43,6 +45,14 @@ export default async function SupplierLedgerPage({ params }: { params: Promise<{
       <Card className="mb-6 p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-slate">Current payable balance</p>
         <p className="mt-1 text-2xl font-semibold text-danger">{formatCurrency(currentBalance)}</p>
+        {outstandingAmount > 0 ? (
+          <div className="mt-4 border-t border-slate/10 pt-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate">
+              Record payment — clears oldest outstanding purchases first
+            </p>
+            <SupplierBulkPaymentForm supplierId={supplier.id} outstanding={outstandingAmount} />
+          </div>
+        ) : null}
       </Card>
 
       <div className="mb-3">
