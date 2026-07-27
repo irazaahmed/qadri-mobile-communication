@@ -11,7 +11,8 @@ export function formatCurrency(value: string | number | null | undefined): strin
   if (value === null || value === undefined) return "Rs 0";
   const num = typeof value === "string" ? Number(value) : value;
   if (!Number.isFinite(num)) return "Rs 0";
-  return `Rs ${num.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const sign = num < 0 ? "-" : "";
+  return `${sign}Rs ${Math.abs(num).toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
 /** All display timestamps render in Pakistan Standard Time (UTC+5, no DST) regardless of server timezone — storage stays UTC via `DateTime @default(now())`, only display converts. */
