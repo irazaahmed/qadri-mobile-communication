@@ -114,7 +114,7 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
           throw new Error(`Phone ${line.phoneId} not found.`);
         }
         if (phone.status !== "IN_STOCK") {
-          throw new Error(`Phone ${phone.imei} is not IN_STOCK (current status: ${phone.status}).`);
+          throw new Error(`Phone ${phone.imei ?? phone.id} is not IN_STOCK (current status: ${phone.status}).`);
         }
       } else {
         const accessory = await tx.accessory.findUnique({ where: { id: line.accessoryId } });

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAccessoryById } from "@/lib/actions/accessories";
-import { Card, PageHeader } from "../../../../_components/ui";
+import { ButtonLink, Card, PageHeader } from "../../../../_components/ui";
 import { RestockForm } from "./restock-form";
 
 export default async function RestockAccessoryPage({ params }: { params: Promise<{ id: string }> }) {
@@ -11,6 +11,9 @@ export default async function RestockAccessoryPage({ params }: { params: Promise
 
   return (
     <div>
+      <ButtonLink href="/admin/inventory/accessories" variant="ghost" size="sm" className="mb-3">
+        ← Back to accessories
+      </ButtonLink>
       <PageHeader
         title="Restock accessory"
         subtitle={`${accessory.name} — ${accessory.brand}${accessory.variant ? `, ${accessory.variant}` : ""} — currently ${accessory.quantity} in stock`}

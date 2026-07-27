@@ -57,7 +57,7 @@ export async function createClaim(input: CreateClaimInput): Promise<Claim> {
       const phone = await tx.phone.findUniqueOrThrow({ where: { id: input.phoneId! } });
       if (phone.status !== PhoneStatus.SOLD) {
         throw new Error(
-          `Phone ${phone.imei} is not SOLD (current status: ${phone.status}) — only a sold phone can be claimed.`
+          `Phone ${phone.imei ?? phone.id} is not SOLD (current status: ${phone.status}) — only a sold phone can be claimed.`
         );
       }
     }

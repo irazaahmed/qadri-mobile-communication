@@ -136,3 +136,33 @@ export interface RestockAccessoryInput {
 export async function restockAccessory(input: RestockAccessoryInput): Promise<Accessory> {
   return prisma.$transaction((tx) => upsertAccessoryStock(tx, input));
 }
+
+export interface AccessoryStockSummary {
+  itemCount: number;
+  totalQuantity: number;
+  totalCostValue: string;
+}
+
+/** Total accessory stock (all rows — quantity itself IS the stock) for the inventory tab header. */
+export async function getAccessoryStockSummary(): Promise<AccessoryStockSummary> {
+  const accessories = await prisma.accessory.findMany({ select: { quantity: true, costPrice: true } });
+
+  const totalQuantity = accessories.reduce((sum, a) => sum + a.quantity, 0);
+  const totalCostValue = accessories.reduce(
+    (sum, a) => sum.plus(a.costPrice.times(a.quantity)),
+    new Prisma.Decimal(0)
+  );
+
+  return { itemCount: accessories.length, totalQuantity, totalCostValue: totalCostValue.toString() };
+}
+
+/** Distinct brands present in accessory inventory, for the brand quick-filter buttons. */
+export async function getAccessoryBrands(): Promise<string[]> {
+  const rows = await prisma.accessory.findMany({
+    distinct: ["brand"],
+    select: { brand: true },
+    orderBy: { brand: "asc" },
+  });
+
+  return rows.map((r) => r.brand);
+}

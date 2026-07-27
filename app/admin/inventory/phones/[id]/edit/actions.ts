@@ -12,6 +12,7 @@ export async function updatePhoneAction(
   _prevState: PhoneEditState,
   formData: FormData
 ): Promise<PhoneEditState> {
+  const imei = String(formData.get("imei") || "").trim();
   const brand = String(formData.get("brand") || "").trim();
   const model = String(formData.get("model") || "").trim();
   const storage = String(formData.get("storage") || "").trim();
@@ -27,6 +28,7 @@ export async function updatePhoneAction(
 
   try {
     await updatePhone(id, {
+      imei: imei || null,
       brand,
       model,
       storage: storage || null,

@@ -1,4 +1,4 @@
-import { listAccessories } from "@/lib/actions/accessories";
+import { getAccessoryBrands, getAccessoryStockSummary, listAccessories } from "@/lib/actions/accessories";
 import {
   Badge,
   ButtonLink,
@@ -20,12 +20,16 @@ export default async function AccessoriesPage({
   searchParams: Promise<{ name?: string; brand?: string; category?: string; lowStockOnly?: string }>;
 }) {
   const params = await searchParams;
-  const accessories = await listAccessories({
-    name: params.name || undefined,
-    brand: params.brand || undefined,
-    category: params.category || undefined,
-    lowStockOnly: params.lowStockOnly === "1",
-  });
+  const [accessories, brands, stockSummary] = await Promise.all([
+    listAccessories({
+      name: params.name || undefined,
+      brand: params.brand || undefined,
+      category: params.category || undefined,
+      lowStockOnly: params.lowStockOnly === "1",
+    }),
+    getAccessoryBrands(),
+    getAccessoryStockSummary(),
+  ]);
 
   return (
     <div>
@@ -38,6 +42,42 @@ export default async function AccessoriesPage({
           </ButtonLink>
         }
       />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate/10 bg-surface-muted px-4 py-2.5 text-sm">
+        <span className="font-medium text-brand-blue">{stockSummary.itemCount} catalog item(s)</span>
+        <span className="text-slate">·</span>
+        <span className="font-medium text-brand-blue">{stockSummary.totalQuantity} unit(s) in stock</span>
+        <span className="text-slate">·</span>
+        <span className="font-medium text-brand-blue">
+          Total cost value: {formatCurrency(stockSummary.totalCostValue)}
+        </span>
+      </div>
+
+      {brands.length > 0 ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <a
+            href="/admin/inventory/accessories"
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+              !params.brand ? "bg-brand-blue text-white" : "bg-surface-muted text-slate hover:bg-slate/10"
+            }`}
+          >
+            All brands
+          </a>
+          {brands.map((b) => (
+            <a
+              key={b}
+              href={`/admin/inventory/accessories?brand=${encodeURIComponent(b)}`}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                params.brand?.toLowerCase() === b.toLowerCase()
+                  ? "bg-brand-blue text-white"
+                  : "bg-surface-muted text-slate hover:bg-slate/10"
+              }`}
+            >
+              {b}
+            </a>
+          ))}
+        </div>
+      ) : null}
 
       <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
         <Input name="name" placeholder="Name" defaultValue={params.name} className="max-w-[160px]" />

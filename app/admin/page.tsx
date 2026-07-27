@@ -4,6 +4,7 @@ import {
   getOutstandingPayables,
   getOutstandingReceivables,
   getOutstandingTotals,
+  getTodayProfit,
   getTodayStats,
   getWarrantyExpiringPhones,
 } from "@/lib/actions/dashboard";
@@ -11,8 +12,9 @@ import { Badge, ButtonLink, Card, EmptyState, PageHeader, tableWrap, table, thCl
 import { formatCurrency, formatDate, isOverdue } from "./_lib/format";
 
 export default async function DashboardPage() {
-  const [today, cashBalance, lowStock, payables, receivables, totals, warrantyExpiring] = await Promise.all([
+  const [today, todayProfit, cashBalance, lowStock, payables, receivables, totals, warrantyExpiring] = await Promise.all([
     getTodayStats(),
+    getTodayProfit(),
     getCashBalance(),
     getLowStockAccessories(),
     getOutstandingPayables(8),
@@ -38,8 +40,9 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Today's sales" value={formatCurrency(today.salesTotal)} sub={`${today.salesCount} invoice(s)`} />
+        <StatCard label="Today's profit" value={formatCurrency(todayProfit)} sub="Revenue minus cost" accent="blue" />
         <StatCard label="Today's purchases" value={formatCurrency(today.purchasesTotal)} sub={`${today.purchasesCount} invoice(s)`} />
         <StatCard label="Cash balance" value={formatCurrency(cashBalance)} sub="Live shop cash" accent="blue" />
         <StatCard label="Payable to suppliers" value={formatCurrency(totals.totalPayable)} sub="Outstanding" accent="danger" />

@@ -1,4 +1,4 @@
-import { listPhones } from "@/lib/actions/phones";
+import { getPhoneBrands, getPhoneStockSummary, listPhones } from "@/lib/actions/phones";
 import { listSuppliers } from "@/lib/actions/suppliers";
 import type { PhoneStatus } from "@prisma/client";
 import {
@@ -49,7 +49,12 @@ export default async function PhonesPage({
     status: (params.status as PhoneStatus) || undefined,
   };
 
-  const [phones, suppliers] = await Promise.all([listPhones(filters), listSuppliers()]);
+  const [phones, suppliers, brands, stockSummary] = await Promise.all([
+    listPhones(filters),
+    listSuppliers(),
+    getPhoneBrands(),
+    getPhoneStockSummary(),
+  ]);
   const supplierName = new Map(suppliers.map((s) => [s.id, s.name]));
 
   return (
@@ -63,6 +68,40 @@ export default async function PhonesPage({
           </ButtonLink>
         }
       />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate/10 bg-surface-muted px-4 py-2.5 text-sm">
+        <span className="font-medium text-brand-blue">In stock: {stockSummary.count} unit(s)</span>
+        <span className="text-slate">·</span>
+        <span className="font-medium text-brand-blue">
+          Total cost value: {formatCurrency(stockSummary.totalCostValue)}
+        </span>
+      </div>
+
+      {brands.length > 0 ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <a
+            href="/admin/inventory/phones"
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+              !params.brand ? "bg-brand-blue text-white" : "bg-surface-muted text-slate hover:bg-slate/10"
+            }`}
+          >
+            All brands
+          </a>
+          {brands.map((b) => (
+            <a
+              key={b}
+              href={`/admin/inventory/phones?brand=${encodeURIComponent(b)}`}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                params.brand?.toLowerCase() === b.toLowerCase()
+                  ? "bg-brand-blue text-white"
+                  : "bg-surface-muted text-slate hover:bg-slate/10"
+              }`}
+            >
+              {b}
+            </a>
+          ))}
+        </div>
+      ) : null}
 
       <form method="get" className="mb-4 flex flex-wrap gap-2">
         <Input name="imei" placeholder="Search IMEI" defaultValue={params.imei} className="max-w-[180px]" />
@@ -110,7 +149,7 @@ export default async function PhonesPage({
             <tbody>
               {phones.map((p) => (
                 <tr key={p.id} className={trHover}>
-                  <td className={`${tdClass} font-mono text-xs`}>{p.imei}</td>
+                  <td className={`${tdClass} font-mono text-xs`}>{p.imei ?? <span className="italic text-slate">no IMEI</span>}</td>
                   <td className={tdClass}>
                     <span className="font-medium">{p.brand}</span> {p.model}
                   </td>

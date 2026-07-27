@@ -8,7 +8,7 @@ import { formatCurrency } from "../../_lib/format";
 
 export interface PhoneOption {
   id: string;
-  imei: string;
+  imei: string | null;
   brand: string;
   model: string;
   storage: string | null;
@@ -99,7 +99,7 @@ export function SaleForm({
       .filter(
         (p) =>
           !q ||
-          p.imei.toLowerCase().includes(q) ||
+          (p.imei ?? "").toLowerCase().includes(q) ||
           p.brand.toLowerCase().includes(q) ||
           p.model.toLowerCase().includes(q)
       )
@@ -131,7 +131,7 @@ export function SaleForm({
         key: nextKey(),
         itemType: "PHONE",
         phoneId: p.id,
-        label: `${p.brand} ${p.model} ${p.storage ? `(${p.storage})` : ""} — ${p.imei}`,
+        label: `${p.brand} ${p.model} ${p.storage ? `(${p.storage})` : ""} — ${p.imei ?? "no IMEI"}`,
         rate: "",
       },
     ]);
@@ -362,7 +362,7 @@ export function SaleForm({
               >
                 <span className="font-medium">{p.brand} {p.model}</span>{" "}
                 <span className="text-slate">{p.storage || ""} {p.color || ""}</span>{" "}
-                <span className="font-mono text-xs text-slate">{p.imei}</span>
+                <span className="font-mono text-xs text-slate">{p.imei ?? "no IMEI"}</span>
               </button>
             ))}
             {phoneSearch && filteredPhones.length === 0 ? (

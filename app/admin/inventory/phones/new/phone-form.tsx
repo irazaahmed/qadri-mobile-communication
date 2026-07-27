@@ -9,8 +9,11 @@ export function PhoneForm({ suppliers }: { suppliers: { id: string; name: string
 
   return (
     <form action={formAction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <Field label="IMEI *">
-        <Input name="imei" required autoFocus placeholder="356789..." />
+      <Field label="IMEI" hint="Leave blank to bulk-add several identical units via Quantity below.">
+        <Input name="imei" autoFocus placeholder="356789... (optional)" />
+      </Field>
+      <Field label="Quantity" hint="Only used when IMEI is left blank — creates this many identical units.">
+        <Input name="quantity" type="number" min={1} step={1} defaultValue={1} />
       </Field>
       <Field label="Condition *">
         <Select name="condition" required defaultValue="NEW">
@@ -33,7 +36,7 @@ export function PhoneForm({ suppliers }: { suppliers: { id: string; name: string
       <Field label="Warranty (months)" hint="Typically 12 for new, blank for used.">
         <Input name="warrantyMonths" type="number" min={0} placeholder="12" />
       </Field>
-      <Field label="Cost price *">
+      <Field label="Cost price (per unit) *">
         <Input name="costPrice" type="number" min={0} step="0.01" required placeholder="0.00" />
       </Field>
       <Field label="Supplier">

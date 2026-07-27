@@ -31,7 +31,7 @@ function withWarranty(phone: Phone): PhoneWithWarranty {
 }
 
 export interface CreatePhoneInput {
-  imei: string;
+  imei?: string | null;
   brand: string;
   model: string;
   storage?: string | null;
@@ -40,30 +40,61 @@ export interface CreatePhoneInput {
   warrantyMonths?: number | null;
   costPrice: number | string;
   supplierId?: string | null;
+  /** Bulk-add count for identical units with no per-piece IMEI. Ignored (forced to 1) when `imei` is set. */
+  quantity?: number;
 }
 
-export async function createPhone(input: CreatePhoneInput): Promise<PhoneWithWarranty> {
-  const existing = await prisma.phone.findUnique({ where: { imei: input.imei } });
-  if (existing) {
-    throw new Error(`IMEI already exists: ${input.imei}`);
+export interface CreatePhoneResult {
+  count: number;
+  /** Only present when exactly one unit was created (the IMEI-tracked path). */
+  phone?: PhoneWithWarranty;
+}
+
+/**
+ * Creates one or more Phone rows. IMEI is optional: leave it blank to
+ * bulk-add `quantity` identical units (same brand/model/cost/etc, each its
+ * own row with `imei: null`) — Postgres allows multiple NULLs under a
+ * unique index, so this doesn't collide with the IMEI uniqueness constraint.
+ * A specific IMEI always means exactly one physical unit, so `quantity` is
+ * rejected in that case rather than silently ignored.
+ */
+export async function createPhone(input: CreatePhoneInput): Promise<CreatePhoneResult> {
+  const imei = input.imei?.trim() ? input.imei.trim() : null;
+  const quantity = input.quantity && input.quantity > 0 ? Math.floor(input.quantity) : 1;
+
+  if (imei && quantity > 1) {
+    throw new Error("Enter a specific IMEI per unit, or leave IMEI blank to bulk-add multiple units.");
   }
 
-  const phone = await prisma.phone.create({
-    data: {
-      imei: input.imei,
-      brand: input.brand,
-      model: input.model,
-      storage: input.storage ?? null,
-      color: input.color ?? null,
-      condition: input.condition,
-      warrantyMonths: input.warrantyMonths ?? null,
-      costPrice: new Prisma.Decimal(input.costPrice),
-      supplierId: input.supplierId ?? null,
-      status: PhoneStatus.IN_STOCK,
-    },
+  if (imei) {
+    const existing = await prisma.phone.findUnique({ where: { imei } });
+    if (existing) {
+      throw new Error(`IMEI already exists: ${imei}`);
+    }
+  }
+
+  const baseData = {
+    brand: input.brand,
+    model: input.model,
+    storage: input.storage ?? null,
+    color: input.color ?? null,
+    condition: input.condition,
+    warrantyMonths: input.warrantyMonths ?? null,
+    costPrice: new Prisma.Decimal(input.costPrice),
+    supplierId: input.supplierId ?? null,
+    status: PhoneStatus.IN_STOCK,
+  };
+
+  if (quantity === 1) {
+    const phone = await prisma.phone.create({ data: { ...baseData, imei } });
+    return { count: 1, phone: withWarranty(phone) };
+  }
+
+  await prisma.phone.createMany({
+    data: Array.from({ length: quantity }, () => ({ ...baseData, imei: null })),
   });
 
-  return withWarranty(phone);
+  return { count: quantity };
 }
 
 export interface PhoneSearchFilters {
@@ -98,6 +129,7 @@ export async function getPhoneByImei(imei: string): Promise<PhoneWithWarranty | 
 }
 
 export interface UpdatePhoneInput {
+  imei?: string | null;
   brand?: string;
   model?: string;
   storage?: string | null;
@@ -109,14 +141,27 @@ export interface UpdatePhoneInput {
 }
 
 /**
- * Updates phone specs only. Never touches `status`, `soldAt`,
- * `warrantyStartDate`, or `imei` — those are owned by the sale/claim
- * actions (status machine) or are immutable identifiers.
+ * Updates phone specs, including IMEI (now editable — e.g. to fill in the
+ * IMEI on a bulk-added unit later). Never touches `status`, `soldAt`, or
+ * `warrantyStartDate` — those are owned by the sale/claim actions (status
+ * machine).
  */
 export async function updatePhone(id: string, input: UpdatePhoneInput): Promise<PhoneWithWarranty> {
+  let imei: string | null | undefined = undefined;
+  if (input.imei !== undefined) {
+    imei = input.imei?.trim() ? input.imei.trim() : null;
+    if (imei) {
+      const existing = await prisma.phone.findUnique({ where: { imei } });
+      if (existing && existing.id !== id) {
+        throw new Error(`IMEI already exists: ${imei} (already in stock as ${existing.brand} ${existing.model}).`);
+      }
+    }
+  }
+
   const phone = await prisma.phone.update({
     where: { id },
     data: {
+      ...(imei !== undefined ? { imei } : {}),
       ...(input.brand !== undefined ? { brand: input.brand } : {}),
       ...(input.model !== undefined ? { model: input.model } : {}),
       ...(input.storage !== undefined ? { storage: input.storage } : {}),
@@ -129,4 +174,31 @@ export async function updatePhone(id: string, input: UpdatePhoneInput): Promise<
   });
 
   return withWarranty(phone);
+}
+
+export interface PhoneStockSummary {
+  count: number;
+  totalCostValue: string;
+}
+
+/** Current in-stock phone count + total cost value (investment), for the inventory tab header. */
+export async function getPhoneStockSummary(): Promise<PhoneStockSummary> {
+  const phones = await prisma.phone.findMany({
+    where: { status: PhoneStatus.IN_STOCK },
+    select: { costPrice: true },
+  });
+
+  const total = phones.reduce((sum, p) => sum.plus(p.costPrice), new Prisma.Decimal(0));
+  return { count: phones.length, totalCostValue: total.toString() };
+}
+
+/** Distinct brands present in phone inventory, for the brand quick-filter buttons. */
+export async function getPhoneBrands(): Promise<string[]> {
+  const rows = await prisma.phone.findMany({
+    distinct: ["brand"],
+    select: { brand: true },
+    orderBy: { brand: "asc" },
+  });
+
+  return rows.map((r) => r.brand);
 }

@@ -7,7 +7,7 @@ import { Button, Card, ErrorBanner, Field, Input, Textarea } from "../../_compon
 
 export interface SoldPhoneOption {
   id: string;
-  imei: string;
+  imei: string | null;
   brand: string;
   model: string;
 }
@@ -60,7 +60,7 @@ export function ClaimForm({
     const q = phoneSearch.trim().toLowerCase();
     if (!q) return [];
     return phones
-      .filter((p) => p.imei.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.model.toLowerCase().includes(q))
+      .filter((p) => (p.imei ?? "").toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.model.toLowerCase().includes(q))
       .slice(0, 8);
   }, [phones, phoneSearch]);
 
@@ -222,7 +222,7 @@ export function ClaimForm({
               <span className="font-medium">
                 {selectedPhone.brand} {selectedPhone.model}
               </span>
-              <span className="font-mono text-xs text-slate">{selectedPhone.imei}</span>
+              <span className="font-mono text-xs text-slate">{selectedPhone.imei ?? "no IMEI"}</span>
               <button type="button" onClick={() => setSelectedPhone(null)} className="ml-auto text-xs text-danger hover:underline">
                 Clear
               </button>
@@ -242,7 +242,7 @@ export function ClaimForm({
                       }}
                       className="rounded px-2 py-1 text-left text-sm hover:bg-surface-muted"
                     >
-                      {p.brand} {p.model} <span className="font-mono text-xs text-slate">{p.imei}</span>
+                      {p.brand} {p.model} <span className="font-mono text-xs text-slate">{p.imei ?? "no IMEI"}</span>
                     </button>
                   ))}
                 </div>

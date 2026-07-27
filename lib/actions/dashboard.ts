@@ -60,6 +60,28 @@ export async function getTodayStats(): Promise<TodayStats> {
   };
 }
 
+/**
+ * Today's profit = revenue (sum of SaleItem.lineTotal) minus COGS (sum of
+ * costAtSale x quantity), for SaleItems whose Sale was created today. Uses
+ * the costAtSale snapshot per the cash-ledger-and-profit skill — never the
+ * current Phone/Accessory cost, which can drift after the sale.
+ */
+export async function getTodayProfit(): Promise<string> {
+  const since = startOfToday();
+
+  const items = await prisma.saleItem.findMany({
+    where: { sale: { createdAt: { gte: since } } },
+    select: { lineTotal: true, costAtSale: true, quantity: true },
+  });
+
+  const profit = items.reduce((sum, item) => {
+    const cost = item.costAtSale.times(item.quantity ?? 1);
+    return sum.plus(item.lineTotal.minus(cost));
+  }, new Prisma.Decimal(0));
+
+  return profit.toString();
+}
+
 export async function getCashBalance(): Promise<string> {
   const latest = await prisma.cashLedgerEntry.findFirst({
     orderBy: { createdAt: "desc" },
@@ -98,7 +120,7 @@ export async function getLowStockAccessories(): Promise<LowStockAccessoryRow[]> 
 
 export interface WarrantyExpiringRow {
   id: string;
-  imei: string;
+  imei: string | null;
   brand: string;
   model: string;
   daysLeft: number;

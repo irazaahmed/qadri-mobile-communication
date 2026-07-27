@@ -170,6 +170,15 @@ export function ErrorBanner({ message }: { message?: string | null }) {
   );
 }
 
+export function SuccessBanner({ message }: { message?: string | null }) {
+  if (!message) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-success/30 bg-success/10 px-4 py-2.5 text-sm text-success">
+      {message}
+    </div>
+  );
+}
+
 export function EmptyState({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center rounded-xl border border-dashed border-slate/25 bg-surface-muted px-4 py-10 text-sm text-slate">

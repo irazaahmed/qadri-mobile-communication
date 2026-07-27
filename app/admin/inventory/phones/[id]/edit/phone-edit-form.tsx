@@ -8,7 +8,7 @@ import type { WarrantyStatus } from "@/lib/warranty";
 
 export interface PhoneEditInitial {
   id: string;
-  imei: string;
+  imei: string | null;
   brand: string;
   model: string;
   storage: string | null;
@@ -43,10 +43,6 @@ export function PhoneEditForm({
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-4 rounded-lg bg-surface-muted p-4 text-sm">
         <div>
-          <p className="text-xs text-slate">IMEI</p>
-          <p className="font-mono">{phone.imei}</p>
-        </div>
-        <div>
           <p className="text-xs text-slate">Status</p>
           <Badge variant="blue">{phone.status.replaceAll("_", " ")}</Badge>
         </div>
@@ -60,10 +56,13 @@ export function PhoneEditForm({
             <p>{formatDateTime(phone.soldAt)}</p>
           </div>
         ) : null}
-        <p className="text-xs text-slate">Status, sold date and IMEI are only changed by sale/claim flows.</p>
+        <p className="text-xs text-slate">Status and sold date are only changed by sale/claim flows.</p>
       </div>
 
       <form action={formAction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Field label="IMEI" hint="Blank = bulk-added unit with no IMEI on file yet.">
+          <Input name="imei" defaultValue={phone.imei ?? ""} placeholder="356789... (optional)" />
+        </Field>
         <Field label="Condition *">
           <Select name="condition" required defaultValue={phone.condition}>
             <option value="NEW">New</option>

@@ -39,5 +39,5 @@ export async function createAccessoryAction(
   }
 
   revalidatePath("/admin/inventory/accessories");
-  redirect("/admin/inventory/accessories?created=1");
+  redirect("/admin/inventory/accessories/new?added=1");
 }

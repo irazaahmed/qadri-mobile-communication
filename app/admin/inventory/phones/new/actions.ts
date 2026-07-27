@@ -20,16 +20,24 @@ export async function createPhoneAction(
   const warrantyMonthsRaw = String(formData.get("warrantyMonths") || "").trim();
   const costPrice = String(formData.get("costPrice") || "").trim();
   const supplierId = String(formData.get("supplierId") || "").trim();
+  const quantityRaw = String(formData.get("quantity") || "").trim();
+  const quantity = quantityRaw ? Number(quantityRaw) : 1;
 
-  if (!imei || !brand || !model || !condition || !costPrice) {
-    return { error: "IMEI, brand, model, condition and cost price are required." };
+  if (!brand || !model || !condition || !costPrice) {
+    return { error: "Brand, model, condition and cost price are required." };
+  }
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    return { error: "Quantity must be a positive whole number." };
+  }
+  if (imei && quantity > 1) {
+    return { error: "Enter a specific IMEI per unit, or leave IMEI blank to bulk-add by quantity." };
   }
 
-  let phoneId: string;
+  let count: number;
 
   try {
-    const phone = await createPhone({
-      imei,
+    const result = await createPhone({
+      imei: imei || null,
       brand,
       model,
       storage: storage || null,
@@ -38,12 +46,13 @@ export async function createPhoneAction(
       warrantyMonths: warrantyMonthsRaw ? Number(warrantyMonthsRaw) : null,
       costPrice,
       supplierId: supplierId || null,
+      quantity,
     });
-    phoneId = phone.id;
+    count = result.count;
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to add phone." };
   }
 
   revalidatePath("/admin/inventory/phones");
-  redirect(`/admin/inventory/phones/${phoneId}/edit?created=1`);
+  redirect(`/admin/inventory/phones/new?added=${count}`);
 }

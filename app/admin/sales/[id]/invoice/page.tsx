@@ -101,7 +101,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                         {phone.brand} {phone.model} {phone.storage ? `(${phone.storage})` : ""}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {phone.color ? `${phone.color} — ` : ""}IMEI {phone.imei}
+                        {phone.color ? `${phone.color} — ` : ""}IMEI {phone.imei ?? "N/A"}
                       </p>
                     </div>
                   ) : accessory ? (

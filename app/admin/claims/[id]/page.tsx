@@ -48,7 +48,7 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
                 ? `${claim.accessory.name} × ${claim.quantity ?? 1}`
                 : "-"}
           </p>
-          {claim.phone ? <p className="font-mono text-xs text-slate">{claim.phone.imei}</p> : null}
+          {claim.phone ? <p className="font-mono text-xs text-slate">{claim.phone.imei ?? "no IMEI"}</p> : null}
         </div>
         <div>
           <p className="text-xs text-slate">Reason</p>

@@ -131,7 +131,7 @@ model CustomerLedgerEntry {
 
 model Phone {
   id                String         @id @default(cuid())
-  imei              String         @unique
+  imei              String?        @unique // null = bulk-added unit with no per-piece IMEI on file yet
   brand             String
   model             String
   storage           String?

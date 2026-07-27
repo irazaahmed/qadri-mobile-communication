@@ -83,7 +83,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                   {phone ? (
                     <span>
                       {phone.brand} {phone.model} {phone.storage ? `(${phone.storage})` : ""}{" "}
-                      <span className="font-mono text-xs text-slate">{phone.imei}</span>
+                      <span className="font-mono text-xs text-slate">{phone.imei ?? "no IMEI"}</span>
                     </span>
                   ) : accessory ? (
                     <span>
