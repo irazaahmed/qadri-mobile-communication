@@ -64,3 +64,21 @@ export async function updateSupplier(id: string, input: UpdateSupplierInput): Pr
 export async function deleteSupplier(id: string): Promise<Supplier> {
   return prisma.supplier.delete({ where: { id } });
 }
+
+/**
+ * Current payable balance per supplier (their ledger's latest balanceAfter),
+ * for the Suppliers list — one query instead of one-per-row. Suppliers with
+ * no ledger activity yet are simply absent from the map (treat as "0").
+ */
+export async function getSupplierBalances(): Promise<Map<string, string>> {
+  const entries = await prisma.supplierLedgerEntry.findMany({
+    orderBy: { createdAt: "asc" },
+    select: { supplierId: true, balanceAfter: true },
+  });
+
+  const balances = new Map<string, string>();
+  for (const entry of entries) {
+    balances.set(entry.supplierId, entry.balanceAfter.toString());
+  }
+  return balances;
+}

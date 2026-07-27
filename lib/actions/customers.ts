@@ -81,3 +81,22 @@ export async function updateCustomer(id: string, input: UpdateCustomerInput): Pr
 export async function deleteCustomer(id: string): Promise<Customer> {
   return prisma.customer.delete({ where: { id } });
 }
+
+/**
+ * Current receivable balance per customer (their ledger's latest
+ * balanceAfter), for the Customers list — one query instead of one-per-row.
+ * Customers with no ledger activity yet are simply absent from the map
+ * (treat as "0").
+ */
+export async function getCustomerBalances(): Promise<Map<string, string>> {
+  const entries = await prisma.customerLedgerEntry.findMany({
+    orderBy: { createdAt: "asc" },
+    select: { customerId: true, balanceAfter: true },
+  });
+
+  const balances = new Map<string, string>();
+  for (const entry of entries) {
+    balances.set(entry.customerId, entry.balanceAfter.toString());
+  }
+  return balances;
+}

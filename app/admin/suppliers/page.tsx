@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listSuppliers } from "@/lib/actions/suppliers";
+import { listSuppliers, getSupplierBalances } from "@/lib/actions/suppliers";
 import {
   ButtonLink,
   EmptyState,
@@ -12,6 +12,7 @@ import {
   thClass,
   trHover,
 } from "../_components/ui";
+import { formatCurrency } from "../_lib/format";
 import { DeleteButton } from "../_components/delete-button";
 import { deleteSupplierAction } from "./actions";
 
@@ -21,7 +22,10 @@ export default async function SuppliersPage({
   searchParams: Promise<{ name?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  const suppliers = await listSuppliers({ name: params.name || undefined });
+  const [suppliers, balances] = await Promise.all([
+    listSuppliers({ name: params.name || undefined }),
+    getSupplierBalances(),
+  ]);
 
   return (
     <div>
@@ -62,11 +66,15 @@ export default async function SuppliersPage({
                 <th className={thClass}>Name</th>
                 <th className={thClass}>Phone</th>
                 <th className={thClass}>Address</th>
+                <th className={thClass}>Total credit</th>
                 <th className={thClass}></th>
               </tr>
             </thead>
             <tbody>
-              {suppliers.map((s) => (
+              {suppliers.map((s) => {
+                const balance = balances.get(s.id) ?? "0";
+                const owed = Number(balance) > 0;
+                return (
                 <tr key={s.id} className={trHover}>
                   <td className={`${tdClass} font-medium`}>
                     <a href={`/admin/suppliers/${s.id}`} className="text-brand-blue hover:underline">
@@ -75,6 +83,11 @@ export default async function SuppliersPage({
                   </td>
                   <td className={tdClass}>{s.phone || "-"}</td>
                   <td className={tdClass}>{s.address || "-"}</td>
+                  <td className={tdClass}>
+                    <span className={owed ? "font-medium text-danger" : "text-slate"}>
+                      {formatCurrency(balance)}
+                    </span>
+                  </td>
                   <td className={`${tdClass} flex gap-3`}>
                     <a href={`/admin/suppliers/${s.id}/edit`} className="text-brand-blue hover:underline">
                       Edit
@@ -82,7 +95,8 @@ export default async function SuppliersPage({
                     <DeleteButton action={deleteSupplierAction.bind(null, s.id)} />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

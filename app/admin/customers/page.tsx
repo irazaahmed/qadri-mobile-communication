@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listCustomers } from "@/lib/actions/customers";
+import { listCustomers, getCustomerBalances } from "@/lib/actions/customers";
 import {
   ButtonLink,
   EmptyState,
@@ -12,6 +12,7 @@ import {
   thClass,
   trHover,
 } from "../_components/ui";
+import { formatCurrency } from "../_lib/format";
 import { DeleteButton } from "../_components/delete-button";
 import { deleteCustomerAction } from "./actions";
 
@@ -21,7 +22,10 @@ export default async function CustomersPage({
   searchParams: Promise<{ name?: string; phone?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  const customers = await listCustomers({ name: params.name || undefined, phone: params.phone || undefined });
+  const [customers, balances] = await Promise.all([
+    listCustomers({ name: params.name || undefined, phone: params.phone || undefined }),
+    getCustomerBalances(),
+  ]);
 
   return (
     <div>
@@ -63,11 +67,15 @@ export default async function CustomersPage({
                 <th className={thClass}>Name</th>
                 <th className={thClass}>Phone</th>
                 <th className={thClass}>Address</th>
+                <th className={thClass}>Total credit</th>
                 <th className={thClass}></th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((c) => (
+              {customers.map((c) => {
+                const balance = balances.get(c.id) ?? "0";
+                const owed = Number(balance) > 0;
+                return (
                 <tr key={c.id} className={trHover}>
                   <td className={`${tdClass} font-medium`}>
                     <a href={`/admin/customers/${c.id}`} className="text-brand-blue hover:underline">
@@ -76,6 +84,11 @@ export default async function CustomersPage({
                   </td>
                   <td className={tdClass}>{c.phone}</td>
                   <td className={tdClass}>{c.address || "-"}</td>
+                  <td className={tdClass}>
+                    <span className={owed ? "font-medium text-warning" : "text-slate"}>
+                      {formatCurrency(balance)}
+                    </span>
+                  </td>
                   <td className={`${tdClass} flex gap-3`}>
                     <a href={`/admin/customers/${c.id}/edit`} className="text-brand-blue hover:underline">
                       Edit
@@ -83,7 +96,8 @@ export default async function CustomersPage({
                     <DeleteButton action={deleteCustomerAction.bind(null, c.id)} />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
