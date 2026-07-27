@@ -202,3 +202,39 @@ export async function getPhoneBrands(): Promise<string[]> {
 
   return rows.map((r) => r.brand);
 }
+
+/**
+ * Deletes a phone that was added by mistake via manual stock entry. Never a
+ * cash/ledger event (matching createPhone's own note that adding a phone to
+ * stock isn't one), so nothing to reverse there — but only safe to delete
+ * outright if it's still IN_STOCK and was never part of an invoiced
+ * Purchase (those have their own `deletePurchase`, which also reverses the
+ * supplier ledger/cash effect this path never created).
+ */
+export async function deletePhone(id: string): Promise<void> {
+  const phone = await prisma.phone.findUnique({
+    where: { id },
+    include: { purchaseItem: true },
+  });
+  if (!phone) {
+    throw new Error("Phone not found.");
+  }
+  if (phone.status !== PhoneStatus.IN_STOCK) {
+    throw new Error(`Only an in-stock phone can be deleted (current status: ${phone.status}).`);
+  }
+  if (phone.purchaseItem) {
+    throw new Error("This phone was added via a Purchase invoice — delete that purchase instead.");
+  }
+
+  await prisma.phone.delete({ where: { id } });
+}
+
+/** Whether `deletePhone` would currently succeed for this phone — for the Edit page to decide whether to show the option. */
+export async function canDeletePhone(id: string): Promise<boolean> {
+  const phone = await prisma.phone.findUnique({
+    where: { id },
+    include: { purchaseItem: true },
+  });
+  if (!phone) return false;
+  return phone.status === PhoneStatus.IN_STOCK && !phone.purchaseItem;
+}

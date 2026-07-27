@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
-import { getAccessoryById } from "@/lib/actions/accessories";
+import { getAccessoryById, canDeleteAccessory } from "@/lib/actions/accessories";
 import { Card, PageHeader } from "../../../../_components/ui";
 import { AccessoryEditForm } from "./accessory-edit-form";
+import { ConfirmDeleteButton } from "../../../../_components/confirm-delete-button";
+import { deleteAccessoryAction } from "./actions";
 
 export default async function EditAccessoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const accessory = await getAccessoryById(id);
+  const [accessory, deletable] = await Promise.all([getAccessoryById(id), canDeleteAccessory(id)]);
 
   if (!accessory) notFound();
 
@@ -27,6 +29,19 @@ export default async function EditAccessoryPage({ params }: { params: Promise<{ 
           }}
         />
       </Card>
+
+      {deletable ? (
+        <Card className="mt-6 p-6">
+          <h2 className="mb-3 font-semibold text-danger">Danger zone</h2>
+          <ConfirmDeleteButton
+            action={deleteAccessoryAction.bind(null, accessory.id)}
+            confirmPhrase={accessory.name}
+            title="Delete this accessory entirely?"
+            consequences={["Removes this catalog entry completely — only possible since it has no purchase/sale/claim history yet."]}
+            label="Delete this accessory"
+          />
+        </Card>
+      ) : null}
     </div>
   );
 }

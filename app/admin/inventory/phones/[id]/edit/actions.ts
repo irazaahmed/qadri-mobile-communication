@@ -1,6 +1,6 @@
 "use server";
 
-import { updatePhone } from "@/lib/actions/phones";
+import { updatePhone, deletePhone } from "@/lib/actions/phones";
 import { PhoneCondition } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -45,4 +45,15 @@ export async function updatePhoneAction(
   revalidatePath("/admin/inventory/phones");
   revalidatePath(`/admin/inventory/phones/${id}/edit`);
   redirect("/admin/inventory/phones?updated=1");
+}
+
+export async function deletePhoneAction(id: string): Promise<{ error: string } | void> {
+  try {
+    await deletePhone(id);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete phone." };
+  }
+  revalidatePath("/admin/inventory/phones");
+  revalidatePath("/admin");
+  redirect("/admin/inventory/phones?deleted=1");
 }

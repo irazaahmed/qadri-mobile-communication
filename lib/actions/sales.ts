@@ -9,6 +9,7 @@ import {
   PaymentType,
   PaymentStatus,
   PurchaseItemType,
+  PhoneStatus,
   type Sale,
   type SaleItem,
 } from "@prisma/client";
@@ -236,4 +237,93 @@ export async function listSales(filters: SaleSearchFilters = {}): Promise<SaleWi
 
 export async function getSaleById(id: string): Promise<SaleWithItems | null> {
   return prisma.sale.findUnique({ where: { id }, include: { items: true } });
+}
+
+/**
+ * Deletes a wrongly-entered Sale invoice and reverses everything it did:
+ * phones it sold go back to IN_STOCK (never deleted — they're real physical
+ * units, just un-sold), accessory quantity it took out is added back, and
+ * the customer/cash ledger effect it logged is reversed via a new
+ * offsetting entry (never by editing history).
+ *
+ * Blocked entirely if any Payment has been recorded against this sale
+ * (delete those first via `deletePayment`), or if any of its phones is no
+ * longer SOLD — meaning a claim is in progress on it, which must be
+ * resolved or deleted first.
+ */
+export async function deleteSale(saleId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      include: { items: true },
+    });
+    if (!sale) {
+      throw new Error("Sale not found.");
+    }
+
+    const paymentCount = await tx.payment.count({ where: { saleId } });
+    if (paymentCount > 0) {
+      throw new Error(`${sale.invoiceNumber} has payments recorded against it — delete those payments first.`);
+    }
+
+    for (const item of sale.items) {
+      if (item.itemType === "PHONE" && item.phoneId) {
+        const phone = await tx.phone.findUniqueOrThrow({ where: { id: item.phoneId } });
+        if (phone.status !== PhoneStatus.SOLD) {
+          throw new Error(
+            `Can't delete ${sale.invoiceNumber} — a phone from it (${phone.imei ?? phone.model}) has an active claim (status: ${phone.status}). Resolve or delete that claim first.`
+          );
+        }
+      }
+    }
+
+    // Reverse stock effects.
+    for (const item of sale.items) {
+      if (item.itemType === "PHONE" && item.phoneId) {
+        await tx.phone.update({
+          where: { id: item.phoneId },
+          data: { status: PhoneStatus.IN_STOCK, soldAt: null, warrantyStartDate: null, salePrice: null },
+        });
+      } else if (item.itemType === "ACCESSORY" && item.accessoryId && item.quantity) {
+        await tx.accessory.update({
+          where: { id: item.accessoryId },
+          data: { quantity: { increment: item.quantity } },
+        });
+      }
+    }
+
+    await tx.saleItem.deleteMany({ where: { saleId } });
+
+    // Reverse the money side with offsetting entries — never by touching
+    // historical rows, so every balanceAfter chain before this point stays
+    // correct.
+    if (sale.paymentType === PaymentType.CASH) {
+      await appendCashLedger(tx, {
+        sourceType: "SALE",
+        sourceId: sale.id,
+        amount: sale.totalAmount.negated(),
+        note: `Deleted sale ${sale.invoiceNumber}`,
+      });
+    } else {
+      if (sale.customerId) {
+        const amountDue = sale.totalAmount.minus(sale.paidAmount);
+        await appendCustomerLedger(tx, {
+          customerId: sale.customerId,
+          type: "VOID",
+          amount: amountDue.negated(),
+          note: `Deleted sale ${sale.invoiceNumber}`,
+        });
+      }
+      if (sale.paidAmount.greaterThan(0)) {
+        await appendCashLedger(tx, {
+          sourceType: "SALE",
+          sourceId: sale.id,
+          amount: sale.paidAmount.negated(),
+          note: `Deleted sale ${sale.invoiceNumber} — reversing upfront payment`,
+        });
+      }
+    }
+
+    await tx.sale.delete({ where: { id: saleId } });
+  });
 }

@@ -6,8 +6,10 @@ import {
   deliverClaimToCustomer,
   refundClaim,
   rejectClaim,
+  deleteClaim,
 } from "@/lib/actions/claims";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export type ClaimActionResult = { ok: true } | { error: string };
 
@@ -66,4 +68,17 @@ export async function rejectClaimAction(claimId: string, resolutionNote: string)
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to reject claim." };
   }
+}
+
+export async function deleteClaimAction(claimId: string): Promise<{ error: string } | void> {
+  try {
+    await deleteClaim(claimId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete claim." };
+  }
+  revalidatePath("/admin/claims");
+  revalidatePath("/admin/inventory/phones");
+  revalidatePath("/admin/customers");
+  revalidatePath("/admin");
+  redirect("/admin/claims?deleted=1");
 }

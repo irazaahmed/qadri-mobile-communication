@@ -1,7 +1,9 @@
 "use server";
 
-import { recordPayment, type RecordPaymentInput } from "@/lib/actions/payments";
+import { recordPayment, deletePayment, type RecordPaymentInput } from "@/lib/actions/payments";
+import { deletePurchase } from "@/lib/actions/purchases";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export type RecordPurchasePaymentResult = { id: string } | { error: string };
 
@@ -24,4 +26,33 @@ export async function recordPurchasePaymentAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record payment." };
   }
+}
+
+export async function deletePurchasePaymentAction(
+  paymentId: string,
+  purchaseId: string
+): Promise<{ error: string } | void> {
+  try {
+    await deletePayment(paymentId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete payment." };
+  }
+  revalidatePath(`/admin/purchases/${purchaseId}`);
+  revalidatePath("/admin/purchases");
+  revalidatePath("/admin/suppliers");
+  revalidatePath("/admin");
+}
+
+export async function deletePurchaseAction(purchaseId: string): Promise<{ error: string } | void> {
+  try {
+    await deletePurchase(purchaseId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete purchase." };
+  }
+  revalidatePath("/admin/purchases");
+  revalidatePath("/admin/inventory/phones");
+  revalidatePath("/admin/inventory/accessories");
+  revalidatePath("/admin/suppliers");
+  revalidatePath("/admin");
+  redirect("/admin/purchases?deleted=1");
 }

@@ -243,6 +243,59 @@ export async function rejectClaim(claimId: string, input: RejectClaimInput): Pro
   });
 }
 
+/**
+ * Deletes a claim entered by mistake (wrong item/customer/reason) and
+ * reverses everything it did: the phone it's for goes back to SOLD — its
+ * pre-claim state, since a claim can only ever be opened against a sold
+ * phone — and if it had already been REFUNDED, that refund's exact
+ * customer-ledger and cash-ledger effect (looked up from the ledger rows
+ * themselves, the source of truth, not the free-text resolution note) is
+ * reversed with a new offsetting entry rather than by touching history.
+ * Accessory claims never touch stock (only cash/ledger on refund), so
+ * there's nothing to reverse there beyond the same ledger offset.
+ */
+export async function deleteClaim(claimId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const claim = await tx.claim.findUnique({ where: { id: claimId } });
+    if (!claim) {
+      throw new Error("Claim not found.");
+    }
+
+    if (claim.status === "REFUNDED") {
+      const refundLedgerEntry = await tx.customerLedgerEntry.findFirst({
+        where: { claimId: claim.id, type: "CLAIM_REFUND" },
+      });
+      if (refundLedgerEntry) {
+        await appendCustomerLedger(tx, {
+          customerId: claim.customerId,
+          claimId: claim.id,
+          type: "VOID",
+          amount: refundLedgerEntry.amount.negated(),
+          note: `Deleted claim ${claim.claimNumber} — reversing refund`,
+        });
+      }
+
+      const refundCashEntry = await tx.cashLedgerEntry.findFirst({
+        where: { sourceType: "CLAIM_REFUND", sourceId: claim.id },
+      });
+      if (refundCashEntry) {
+        await appendCashLedger(tx, {
+          sourceType: "CLAIM_REFUND",
+          sourceId: claim.id,
+          amount: refundCashEntry.amount.negated(),
+          note: `Deleted claim ${claim.claimNumber} — reversing refund`,
+        });
+      }
+    }
+
+    if (claim.itemType === "PHONE" && claim.phoneId) {
+      await tx.phone.update({ where: { id: claim.phoneId }, data: { status: PhoneStatus.SOLD } });
+    }
+
+    await tx.claim.delete({ where: { id: claimId } });
+  });
+}
+
 export type ClaimWithRelations = Claim & {
   customer: Customer;
   phone: Phone | null;

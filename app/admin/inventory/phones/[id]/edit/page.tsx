@@ -1,12 +1,18 @@
 import { notFound } from "next/navigation";
-import { getPhoneById } from "@/lib/actions/phones";
+import { getPhoneById, canDeletePhone } from "@/lib/actions/phones";
 import { listSuppliers } from "@/lib/actions/suppliers";
 import { Card, PageHeader } from "../../../../_components/ui";
 import { PhoneEditForm } from "./phone-edit-form";
+import { ConfirmDeleteButton } from "../../../../_components/confirm-delete-button";
+import { deletePhoneAction } from "./actions";
 
 export default async function EditPhonePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [phone, suppliers] = await Promise.all([getPhoneById(id), listSuppliers()]);
+  const [phone, suppliers, deletable] = await Promise.all([
+    getPhoneById(id),
+    listSuppliers(),
+    canDeletePhone(id),
+  ]);
 
   if (!phone) notFound();
 
@@ -34,6 +40,19 @@ export default async function EditPhonePage({ params }: { params: Promise<{ id: 
           suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
         />
       </Card>
+
+      {deletable ? (
+        <Card className="mt-6 p-6">
+          <h2 className="mb-3 font-semibold text-danger">Danger zone</h2>
+          <ConfirmDeleteButton
+            action={deletePhoneAction.bind(null, phone.id)}
+            confirmPhrase={phone.imei ?? phone.model}
+            title="Delete this phone from stock?"
+            consequences={["Removes this unit from inventory entirely — it was a manual entry, not from a Purchase invoice."]}
+            label="Delete this phone"
+          />
+        </Card>
+      ) : null}
     </div>
   );
 }

@@ -166,3 +166,45 @@ export async function getAccessoryBrands(): Promise<string[]> {
 
   return rows.map((r) => r.brand);
 }
+
+/**
+ * Deletes an accessory catalog row added by mistake (wrong name/brand typo,
+ * duplicate row, wrong initial quantity). Accessories are aggregate stock
+ * shared across every purchase/sale that ever touched them, so there's no
+ * safe way to "undo just one entry" once any transaction has happened —
+ * only a completely untouched row (no purchase, sale, or claim history at
+ * all) can be deleted outright. Anything already transacted must go through
+ * `deletePurchase` / `deleteSale` / `deleteClaim` instead, or a manual
+ * quantity correction via the existing Edit form.
+ */
+export async function deleteAccessory(id: string): Promise<void> {
+  const accessory = await prisma.accessory.findUnique({ where: { id } });
+  if (!accessory) {
+    throw new Error("Accessory not found.");
+  }
+
+  const [purchaseItemCount, saleItemCount, claimCount] = await Promise.all([
+    prisma.purchaseItem.count({ where: { accessoryId: id } }),
+    prisma.saleItem.count({ where: { accessoryId: id } }),
+    prisma.claim.count({ where: { accessoryId: id } }),
+  ]);
+
+  if (purchaseItemCount > 0 || saleItemCount > 0 || claimCount > 0) {
+    throw new Error(
+      "This accessory has purchase/sale/claim history — it can't be deleted directly. Correct the quantity via Edit instead."
+    );
+  }
+
+  await prisma.accessory.delete({ where: { id } });
+}
+
+/** Whether `deleteAccessory` would currently succeed for this row — for the Edit page to decide whether to show the option. */
+export async function canDeleteAccessory(id: string): Promise<boolean> {
+  const [purchaseItemCount, saleItemCount, claimCount] = await Promise.all([
+    prisma.purchaseItem.count({ where: { accessoryId: id } }),
+    prisma.saleItem.count({ where: { accessoryId: id } }),
+    prisma.claim.count({ where: { accessoryId: id } }),
+  ]);
+
+  return purchaseItemCount === 0 && saleItemCount === 0 && claimCount === 0;
+}

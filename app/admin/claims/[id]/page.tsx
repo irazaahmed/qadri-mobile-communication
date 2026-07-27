@@ -4,6 +4,8 @@ import { listSuppliers } from "@/lib/actions/suppliers";
 import { Badge, Card, PageHeader } from "../../_components/ui";
 import { formatDateTime } from "../../_lib/format";
 import { ClaimActions } from "./claim-actions";
+import { ConfirmDeleteButton } from "../../_components/confirm-delete-button";
+import { deleteClaimAction } from "./actions";
 
 const STATUS_BADGE = {
   RECEIVED_FROM_CUSTOMER: "warning",
@@ -79,6 +81,22 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
       </Card>
 
       <ClaimActions claimId={claim.id} status={claim.status} suppliers={suppliers} outstandingMax={outstandingMax} />
+
+      <Card className="mt-6 p-5">
+        <h2 className="mb-3 font-semibold text-danger">Danger zone</h2>
+        <ConfirmDeleteButton
+          action={deleteClaimAction.bind(null, claim.id)}
+          confirmPhrase={claim.claimNumber}
+          title={`Delete ${claim.claimNumber}?`}
+          consequences={[
+            claim.phone ? "Puts the phone back to SOLD (undoes any claim-driven status change)." : "No stock effect for accessory claims.",
+            claim.status === "REFUNDED"
+              ? "Reverses the refund already paid out to the customer."
+              : "No refund to reverse yet.",
+          ]}
+          label="Delete this claim"
+        />
+      </Card>
     </div>
   );
 }

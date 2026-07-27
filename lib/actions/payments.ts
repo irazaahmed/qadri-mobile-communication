@@ -329,6 +329,80 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
   });
 }
 
+/**
+ * Deletes a single Payment row entered by mistake (wrong amount, wrong
+ * invoice) and reverses exactly what it did: knocks its amount back off the
+ * Purchase's/Sale's paidAmount (recomputing status), and appends offsetting
+ * supplier/customer-ledger and cash-ledger entries — never edits historical
+ * rows, so every balance before this point stays correct.
+ */
+export async function deletePayment(paymentId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const payment = await tx.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) {
+      throw new Error("Payment not found.");
+    }
+
+    if (payment.direction === PaymentDirection.PAYABLE) {
+      if (!payment.purchaseId || !payment.supplierId) {
+        throw new Error("This payment has no purchase/supplier on record — cannot reverse it.");
+      }
+
+      const purchase = await tx.purchase.findUniqueOrThrow({ where: { id: payment.purchaseId } });
+      const newPaidAmount = purchase.paidAmount.minus(payment.amount);
+
+      await tx.purchase.update({
+        where: { id: purchase.id },
+        data: { paidAmount: newPaidAmount, status: recomputeStatus(newPaidAmount, purchase.totalAmount) },
+      });
+
+      await appendSupplierLedger(tx, {
+        supplierId: payment.supplierId,
+        purchaseId: purchase.id,
+        type: "VOID",
+        amount: payment.amount,
+        note: `Deleted payment for ${purchase.invoiceNumber}`,
+      });
+
+      await appendCashLedger(tx, {
+        sourceType: "CREDIT_PAYMENT_OUT",
+        sourceId: payment.id,
+        amount: payment.amount,
+        note: `Deleted payment for ${purchase.invoiceNumber}`,
+      });
+    } else {
+      if (!payment.saleId || !payment.customerId) {
+        throw new Error("This payment has no sale/customer on record — cannot reverse it.");
+      }
+
+      const sale = await tx.sale.findUniqueOrThrow({ where: { id: payment.saleId } });
+      const newPaidAmount = sale.paidAmount.minus(payment.amount);
+
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: { paidAmount: newPaidAmount, status: recomputeStatus(newPaidAmount, sale.totalAmount) },
+      });
+
+      await appendCustomerLedger(tx, {
+        customerId: payment.customerId,
+        saleId: sale.id,
+        type: "VOID",
+        amount: payment.amount,
+        note: `Deleted payment for ${sale.invoiceNumber}`,
+      });
+
+      await appendCashLedger(tx, {
+        sourceType: "CREDIT_PAYMENT_IN",
+        sourceId: payment.id,
+        amount: payment.amount.negated(),
+        note: `Deleted payment for ${sale.invoiceNumber}`,
+      });
+    }
+
+    await tx.payment.delete({ where: { id: paymentId } });
+  });
+}
+
 export async function listPaymentsForPurchase(purchaseId: string): Promise<Payment[]> {
   return prisma.payment.findMany({ where: { purchaseId }, orderBy: { createdAt: "desc" } });
 }

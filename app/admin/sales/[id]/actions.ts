@@ -1,7 +1,9 @@
 "use server";
 
-import { recordPayment, type RecordPaymentInput } from "@/lib/actions/payments";
+import { recordPayment, deletePayment, type RecordPaymentInput } from "@/lib/actions/payments";
+import { deleteSale } from "@/lib/actions/sales";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export type RecordSalePaymentResult = { id: string } | { error: string };
 
@@ -24,4 +26,30 @@ export async function recordSalePaymentAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record payment." };
   }
+}
+
+export async function deleteSalePaymentAction(paymentId: string, saleId: string): Promise<{ error: string } | void> {
+  try {
+    await deletePayment(paymentId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete payment." };
+  }
+  revalidatePath(`/admin/sales/${saleId}/invoice`);
+  revalidatePath("/admin/sales");
+  revalidatePath("/admin/customers");
+  revalidatePath("/admin");
+}
+
+export async function deleteSaleAction(saleId: string): Promise<{ error: string } | void> {
+  try {
+    await deleteSale(saleId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete sale." };
+  }
+  revalidatePath("/admin/sales");
+  revalidatePath("/admin/inventory/phones");
+  revalidatePath("/admin/inventory/accessories");
+  revalidatePath("/admin/customers");
+  revalidatePath("/admin");
+  redirect("/admin/sales?deleted=1");
 }

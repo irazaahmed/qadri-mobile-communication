@@ -7,6 +7,8 @@ import { listPaymentsForPurchase } from "@/lib/actions/payments";
 import { Badge, Card, EmptyState, PageHeader, table, tableWrap, tdClass, thClass, trHover } from "../../_components/ui";
 import { formatCurrency, formatDate, formatDateTime } from "../../_lib/format";
 import { PurchasePaymentForm } from "./payment-form";
+import { ConfirmDeleteButton } from "../../_components/confirm-delete-button";
+import { deletePurchaseAction, deletePurchasePaymentAction } from "./actions";
 
 const STATUS_BADGE = { PAID: "success", PARTIAL: "warning", UNPAID: "danger" } as const;
 
@@ -121,6 +123,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                   <th className={thClass}>Amount</th>
                   <th className={thClass}>Method</th>
                   <th className={thClass}>Note</th>
+                  <th className={thClass}></th>
                 </tr>
               </thead>
               <tbody>
@@ -130,12 +133,42 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                     <td className={tdClass}>{formatCurrency(p.amount.toString())}</td>
                     <td className={tdClass}>{p.method}</td>
                     <td className={tdClass}>{p.note ?? "-"}</td>
+                    <td className={tdClass}>
+                      <ConfirmDeleteButton
+                        action={deletePurchasePaymentAction.bind(null, p.id, purchase.id)}
+                        confirmPhrase={formatCurrency(p.amount.toString())}
+                        title="Delete this payment?"
+                        consequences={[
+                          `Reverses ${formatCurrency(p.amount.toString())} back onto ${purchase.invoiceNumber}'s outstanding balance.`,
+                          "Reverses the cash movement this payment recorded.",
+                        ]}
+                        label="Delete"
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+      </Card>
+
+      <Card className="mt-6 p-5">
+        <h2 className="mb-3 font-semibold text-danger">Danger zone</h2>
+        <ConfirmDeleteButton
+          action={deletePurchaseAction.bind(null, purchase.id)}
+          confirmPhrase={purchase.invoiceNumber}
+          title={`Delete ${purchase.invoiceNumber}?`}
+          consequences={[
+            "Deletes every phone this invoice added to stock (only allowed if still in stock — unsold).",
+            "Reverses the accessory quantity this invoice added (only allowed if not already sold elsewhere).",
+            "Reverses this invoice's supplier payable and cash effect.",
+            payments.length > 0
+              ? "Blocked — delete the payment(s) above first."
+              : "Blocked if any payment is recorded against this invoice.",
+          ]}
+          label="Delete this purchase"
+        />
       </Card>
     </div>
   );

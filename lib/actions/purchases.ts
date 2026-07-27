@@ -12,6 +12,7 @@ import {
   PaymentMethod,
   PurchaseItemType,
   PhoneCondition,
+  PhoneStatus,
   type Purchase,
   type PurchaseItem,
 } from "@prisma/client";
@@ -274,4 +275,98 @@ export async function listPurchases(filters: PurchaseSearchFilters = {}): Promis
 
 export async function getPurchaseById(id: string): Promise<PurchaseWithItems | null> {
   return prisma.purchase.findUnique({ where: { id }, include: { items: true } });
+}
+
+/**
+ * Deletes a wrongly-entered Purchase invoice and reverses everything it did:
+ * phones it added to stock (if still IN_STOCK — deleted outright, they never
+ * had independent history), accessory quantity it added (decremented back —
+ * blocked if some has already been sold elsewhere, since that stock is no
+ * longer this invoice's to take back), and the supplier/cash ledger effect
+ * it logged (reversed via a new offsetting entry, never by editing history,
+ * so every other supplier's/day's running balance stays intact).
+ *
+ * Blocked entirely if any Payment has been recorded against this purchase —
+ * those must be deleted first (`deletePayment`) so the payable balance this
+ * invoice contributed is fully and correctly unwound before the invoice
+ * itself disappears.
+ */
+export async function deletePurchase(purchaseId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const purchase = await tx.purchase.findUnique({
+      where: { id: purchaseId },
+      include: { items: true },
+    });
+    if (!purchase) {
+      throw new Error("Purchase not found.");
+    }
+
+    const paymentCount = await tx.payment.count({ where: { purchaseId } });
+    if (paymentCount > 0) {
+      throw new Error(
+        `${purchase.invoiceNumber} has payments recorded against it — delete those payments first.`
+      );
+    }
+
+    const phoneIds: string[] = [];
+    for (const item of purchase.items) {
+      if (item.itemType === "PHONE" && item.phoneId) {
+        const phone = await tx.phone.findUniqueOrThrow({ where: { id: item.phoneId } });
+        if (phone.status !== PhoneStatus.IN_STOCK) {
+          throw new Error(
+            `Can't delete ${purchase.invoiceNumber} — a phone from it (${phone.imei ?? phone.model}) is no longer in stock (status: ${phone.status}). Undo that sale/claim first.`
+          );
+        }
+        phoneIds.push(phone.id);
+      } else if (item.itemType === "ACCESSORY" && item.accessoryId && item.quantity) {
+        const accessory = await tx.accessory.findUniqueOrThrow({ where: { id: item.accessoryId } });
+        if (accessory.quantity < item.quantity) {
+          throw new Error(
+            `Can't delete ${purchase.invoiceNumber} — only ${accessory.quantity} of "${accessory.name}" remain in stock, but this invoice added ${item.quantity} (some has already been sold elsewhere).`
+          );
+        }
+      }
+    }
+
+    // Reverse stock effects.
+    await tx.purchaseItem.deleteMany({ where: { purchaseId } });
+    if (phoneIds.length > 0) {
+      await tx.phone.deleteMany({ where: { id: { in: phoneIds } } });
+    }
+    for (const item of purchase.items) {
+      if (item.itemType === "ACCESSORY" && item.accessoryId && item.quantity) {
+        await tx.accessory.update({
+          where: { id: item.accessoryId },
+          data: { quantity: { decrement: item.quantity } },
+        });
+      }
+    }
+
+    // Reverse the money side with offsetting entries — never by touching
+    // historical rows, so every balanceAfter chain before this point stays
+    // correct.
+    if (purchase.supplierId) {
+      if (purchase.paymentType === PaymentType.CREDIT) {
+        await appendSupplierLedger(tx, {
+          supplierId: purchase.supplierId,
+          type: "VOID",
+          amount: purchase.totalAmount.negated(),
+          note: `Deleted purchase ${purchase.invoiceNumber}`,
+        });
+      }
+      // CASH purchases with a supplier already net to zero on the supplier
+      // ledger (matching PURCHASE/PAYMENT pair) — nothing to reverse there.
+    }
+
+    if (purchase.paymentType === PaymentType.CASH) {
+      await appendCashLedger(tx, {
+        sourceType: "PURCHASE",
+        sourceId: purchase.id,
+        amount: purchase.totalAmount,
+        note: `Deleted purchase ${purchase.invoiceNumber}`,
+      });
+    }
+
+    await tx.purchase.delete({ where: { id: purchaseId } });
+  });
 }

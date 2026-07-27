@@ -1,6 +1,6 @@
 "use server";
 
-import { updateAccessory } from "@/lib/actions/accessories";
+import { updateAccessory, deleteAccessory } from "@/lib/actions/accessories";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -31,4 +31,15 @@ export async function updateAccessoryAction(
 
   revalidatePath("/admin/inventory/accessories");
   redirect("/admin/inventory/accessories?updated=1");
+}
+
+export async function deleteAccessoryAction(id: string): Promise<{ error: string } | void> {
+  try {
+    await deleteAccessory(id);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete accessory." };
+  }
+  revalidatePath("/admin/inventory/accessories");
+  revalidatePath("/admin");
+  redirect("/admin/inventory/accessories?deleted=1");
 }
