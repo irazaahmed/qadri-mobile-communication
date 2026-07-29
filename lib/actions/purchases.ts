@@ -176,6 +176,15 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
       },
     });
 
+    // Set to true the moment any PHONE line below reuses an existing
+    // costPending phone instead of creating a fresh row — see the
+    // "auto-reconcile" block just below. Applied to the whole purchase after
+    // the loop (isReconciliation), same flag reconcilePendingBillPurchase
+    // uses, since deletePurchase's normal reversal (hard-delete every phone
+    // this invoice touched) would otherwise erase a real phone that existed
+    // — and was possibly already sold — before this purchase arrived.
+    let touchedPendingPhone = false;
+
     for (const { line, rate, lineTotal, quantity } of computedLines) {
       if (line.itemType === "PHONE") {
         // A phone PurchaseItem always represents exactly one physical unit
@@ -183,7 +192,63 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
         // convenience) so a bulk line fans out into `quantity` separate
         // Phone + PurchaseItem pairs, each with imei: null.
         const imei = line.imei?.trim() ? line.imei.trim() : null;
-        for (let i = 0; i < quantity; i++) {
+
+        // Auto-reconcile: this batch may be the real bill for a phone that
+        // was already sold (or is still sitting in stock) on an estimated
+        // cost — see the "sell it before the bill arrives" (costPending)
+        // flow. Rather than adding a brand-new duplicate unit for every
+        // piece in this line, first soak up any matching costPending phones
+        // (same brand/model/condition, oldest first, up to this line's
+        // quantity): reuse the real phone row, correct its cost, clear
+        // costPending, and correct its SaleItem snapshot if it was already
+        // sold — exactly what reconcilePendingBillPurchase does, just
+        // triggered automatically instead of requiring a separate manual
+        // trip. Only the remaining (quantity - matched) pieces get brand-new
+        // Phone rows.
+        const pendingMatches =
+          imei && quantity === 1
+            ? await tx.phone.findMany({
+                where: { imei, costPending: true, purchaseItem: null },
+                include: { saleItem: true },
+              })
+            : await tx.phone.findMany({
+                where: {
+                  costPending: true,
+                  purchaseItem: null,
+                  brand: line.brand,
+                  model: line.model,
+                  condition: line.condition,
+                },
+                include: { saleItem: true },
+                orderBy: { createdAt: "asc" },
+                take: quantity,
+              });
+
+        for (const pending of pendingMatches) {
+          touchedPendingPhone = true;
+
+          await tx.phone.update({
+            where: { id: pending.id },
+            data: { costPrice: rate, costPending: false, ...(supplierId ? { supplierId } : {}) },
+          });
+
+          if (pending.saleItem) {
+            await tx.saleItem.update({ where: { id: pending.saleItem.id }, data: { costAtSale: rate } });
+          }
+
+          await tx.purchaseItem.create({
+            data: {
+              purchaseId: purchase.id,
+              itemType: PurchaseItemType.PHONE,
+              phoneId: pending.id,
+              rate,
+              lineTotal: rate,
+            },
+          });
+        }
+
+        const newUnitsNeeded = quantity - pendingMatches.length;
+        for (let i = 0; i < newUnitsNeeded; i++) {
           const phone = await createPhoneStock(tx, {
             imei: quantity === 1 ? imei : null,
             brand: line.brand,
@@ -229,6 +294,10 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
           },
         });
       }
+    }
+
+    if (touchedPendingPhone) {
+      await tx.purchase.update({ where: { id: purchase.id }, data: { isReconciliation: true } });
     }
 
     if (isCash) {
