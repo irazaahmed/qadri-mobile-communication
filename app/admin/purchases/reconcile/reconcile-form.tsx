@@ -7,6 +7,13 @@ import { createSupplierAction } from "../new/actions";
 import { Badge, Button, Card, ErrorBanner, Field, Input } from "../../_components/ui";
 import { formatCurrency } from "../../_lib/format";
 
+const STATUS_BADGE = {
+  IN_STOCK: "success",
+  SOLD: "slate",
+  CLAIMED: "warning",
+  WITH_SUPPLIER: "warning",
+} as const;
+
 export interface SupplierOption {
   id: string;
   name: string;
@@ -224,7 +231,18 @@ export function ReconcileForm({
       </Card>
 
       <Card className="p-5">
-        <h2 className="mb-3 font-semibold text-brand-blue">Is bill par konse phones hain?</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-brand-blue">Is bill par konse phones hain?</h2>
+          <button
+            type="button"
+            onClick={() =>
+              setSelected((prev) => (prev.size === phones.length ? new Set() : new Set(phones.map((p) => p.id))))
+            }
+            className="text-xs font-medium text-brand-blue hover:underline"
+          >
+            {selected.size === phones.length ? "Clear all" : "Select all"}
+          </button>
+        </div>
         <div className="flex flex-col gap-2">
           {phones.map((p) => {
             const checked = selected.has(p.id);
@@ -241,7 +259,7 @@ export function ReconcileForm({
                     {p.brand} {p.model} {p.storage ? `(${p.storage})` : ""}
                   </p>
                   <p className="text-xs text-slate">
-                    {p.imei ?? "no IMEI"} · <Badge variant={p.status === "SOLD" ? "slate" : "success"}>{p.status}</Badge>
+                    {p.imei ?? "no IMEI"} · <Badge variant={STATUS_BADGE[p.status as keyof typeof STATUS_BADGE] ?? "slate"}>{p.status}</Badge>
                   </p>
                 </div>
                 <span className="text-xs text-slate">Estimate was {formatCurrency(p.costPrice)}</span>
@@ -263,7 +281,9 @@ export function ReconcileForm({
       </Card>
 
       <Card className="flex items-center justify-between p-5">
-        <span className="text-sm text-slate">Selected total (server recomputes and is authoritative)</span>
+        <span className="text-sm text-slate">
+          {selected.size} phone(s) selected — total (server recomputes and is authoritative)
+        </span>
         <span className="text-xl font-semibold text-brand-blue">{formatCurrency(selectedTotal)}</span>
       </Card>
 
