@@ -142,6 +142,11 @@ model Phone {
   costPrice         Decimal        @db.Decimal(12, 2)
   salePrice         Decimal?       @db.Decimal(12, 2)
   status            PhoneStatus    @default(IN_STOCK)
+  // true = costPrice is a rough estimate entered before the supplier's actual
+  // bill arrived (phone can already be sold on this estimate). Cleared back
+  // to false only by reconcilePendingBillPurchase, which also corrects
+  // costPrice and, if already sold, the SaleItem.costAtSale snapshot.
+  costPending       Boolean        @default(false)
 
   supplierId        String?
   supplier          Supplier?      @relation(fields: [supplierId], references: [id])
@@ -186,6 +191,11 @@ model Purchase {
   totalAmount   Decimal        @db.Decimal(12, 2)
   paidAmount    Decimal        @default(0) @db.Decimal(12, 2)
   status        PaymentStatus  @default(UNPAID)
+  // true = this purchase was created by reconcilePendingBillPurchase for
+  // phones that already existed in stock (possibly already sold) rather
+  // than by createPurchase — deletePurchase refuses to touch these, since
+  // its normal reversal would hard-delete real, pre-existing phone rows.
+  isReconciliation Boolean      @default(false)
   items         PurchaseItem[]
   payments      Payment[]
   createdAt     DateTime       @default(now())

@@ -50,6 +50,18 @@ export function PhoneForm({ suppliers }: { suppliers: { id: string; name: string
         </Select>
       </Field>
 
+      <div className="md:col-span-2 flex items-start gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2.5">
+        <input type="checkbox" id="costPending" name="costPending" className="mt-0.5" />
+        <label htmlFor="costPending" className="text-sm">
+          <span className="font-medium">Bill abhi tak nahi aya — cost sirf andaza hai</span>
+          <p className="text-xs text-slate">
+            Item aa gaya hai lekin supplier ka asal bill baad mein aayega. Cost price upar sirf andaza hai — is phone
+            ko sale kar sakte hain, aur bill anay par "Purchases → Reconcile pending bill" se asal rate darj kar ke
+            profit theek ho jayega.
+          </p>
+        </label>
+      </div>
+
       <div className="md:col-span-2">
         <ErrorBanner message={state?.error} />
       </div>

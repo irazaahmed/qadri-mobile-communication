@@ -149,6 +149,35 @@ export async function getWarrantyExpiringPhones(withinDays = 30): Promise<Warran
     }));
 }
 
+export interface PendingBillPhoneRow {
+  id: string;
+  imei: string | null;
+  brand: string;
+  model: string;
+  status: string;
+  costPrice: string;
+}
+
+/** Phones already in stock (or already sold) on an estimated cost, still awaiting the supplier's real bill. */
+export async function getPendingBillPhones(limit = 8): Promise<{ rows: PendingBillPhoneRow[]; total: number }> {
+  const phones = await prisma.phone.findMany({
+    where: { costPending: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return {
+    total: phones.length,
+    rows: phones.slice(0, limit).map((p) => ({
+      id: p.id,
+      imei: p.imei,
+      brand: p.brand,
+      model: p.model,
+      status: p.status,
+      costPrice: p.costPrice.toString(),
+    })),
+  };
+}
+
 export interface OutstandingPayableRow {
   id: string;
   invoiceNumber: string;

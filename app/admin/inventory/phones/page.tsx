@@ -1,4 +1,4 @@
-import { getPhoneBrands, getPhoneStockSummary, listPhones } from "@/lib/actions/phones";
+import { getPendingBillCount, getPhoneBrands, getPhoneStockSummary, listPhones } from "@/lib/actions/phones";
 import { listSuppliers } from "@/lib/actions/suppliers";
 import type { PhoneStatus } from "@prisma/client";
 import {
@@ -49,11 +49,12 @@ export default async function PhonesPage({
     status: (params.status as PhoneStatus) || undefined,
   };
 
-  const [phones, suppliers, brands, stockSummary] = await Promise.all([
+  const [phones, suppliers, brands, stockSummary, pendingBillCount] = await Promise.all([
     listPhones(filters),
     listSuppliers(),
     getPhoneBrands(),
     getPhoneStockSummary(),
+    getPendingBillCount(),
   ]);
   const supplierName = new Map(suppliers.map((s) => [s.id, s.name]));
 
@@ -76,6 +77,17 @@ export default async function PhonesPage({
           Total cost value: {formatCurrency(stockSummary.totalCostValue)}
         </span>
       </div>
+
+      {pendingBillCount > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-warning/25 bg-warning/5 px-4 py-2.5 text-sm">
+          <span className="font-medium text-warning">
+            {pendingBillCount} phone(s) awaiting supplier bill — cost is only an estimate
+          </span>
+          <ButtonLink href="/admin/purchases/reconcile" variant="outline" size="sm" className="ml-auto">
+            Reconcile bill
+          </ButtonLink>
+        </div>
+      ) : null}
 
       {brands.length > 0 ? (
         <div className="mb-4 flex flex-wrap gap-2">
@@ -157,7 +169,14 @@ export default async function PhonesPage({
                     {p.storage || "-"} {p.color ? `/ ${p.color}` : ""}
                   </td>
                   <td className={tdClass}>{p.condition}</td>
-                  <td className={tdClass}>{formatCurrency(p.costPrice.toString())}</td>
+                  <td className={tdClass}>
+                    {formatCurrency(p.costPrice.toString())}
+                    {p.costPending ? (
+                      <span className="ml-1.5">
+                        <Badge variant="warning">bill pending</Badge>
+                      </span>
+                    ) : null}
+                  </td>
                   <td className={tdClass}>{p.salePrice ? formatCurrency(p.salePrice.toString()) : "-"}</td>
                   <td className={tdClass}>
                     <Badge variant={STATUS_BADGE[p.status]}>{p.status.replaceAll("_", " ")}</Badge>

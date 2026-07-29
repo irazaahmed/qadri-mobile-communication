@@ -42,6 +42,8 @@ export interface CreatePhoneInput {
   supplierId?: string | null;
   /** Bulk-add count for identical units with no per-piece IMEI. Ignored (forced to 1) when `imei` is set. */
   quantity?: number;
+  /** True when costPrice is only a rough estimate because the supplier's bill hasn't arrived yet. */
+  costPending?: boolean;
 }
 
 export interface CreatePhoneResult {
@@ -83,6 +85,7 @@ export async function createPhone(input: CreatePhoneInput): Promise<CreatePhoneR
     costPrice: new Prisma.Decimal(input.costPrice),
     supplierId: input.supplierId ?? null,
     status: PhoneStatus.IN_STOCK,
+    costPending: input.costPending ?? false,
   };
 
   if (quantity === 1) {
@@ -138,6 +141,13 @@ export interface UpdatePhoneInput {
   warrantyMonths?: number | null;
   costPrice?: number | string;
   supplierId?: string | null;
+  /**
+   * Plain manual toggle for correcting a mistaken entry — flips the flag
+   * only. Does NOT touch any already-snapshotted SaleItem.costAtSale; the
+   * only path that corrects costAtSale is reconcilePendingBillPurchase
+   * (lib/actions/purchases.ts), which also creates the real Purchase/bill.
+   */
+  costPending?: boolean;
 }
 
 /**
@@ -170,6 +180,7 @@ export async function updatePhone(id: string, input: UpdatePhoneInput): Promise<
       ...(input.warrantyMonths !== undefined ? { warrantyMonths: input.warrantyMonths } : {}),
       ...(input.costPrice !== undefined ? { costPrice: new Prisma.Decimal(input.costPrice) } : {}),
       ...(input.supplierId !== undefined ? { supplierId: input.supplierId } : {}),
+      ...(input.costPending !== undefined ? { costPending: input.costPending } : {}),
     },
   });
 
@@ -190,6 +201,25 @@ export async function getPhoneStockSummary(): Promise<PhoneStockSummary> {
 
   const total = phones.reduce((sum, p) => sum.plus(p.costPrice), new Prisma.Decimal(0));
   return { count: phones.length, totalCostValue: total.toString() };
+}
+
+/**
+ * Phones whose cost is still a rough estimate (supplier bill hasn't arrived
+ * yet) — includes both IN_STOCK and already-SOLD units, since a phone can be
+ * sold before its bill shows up. Oldest first, matching the order the actual
+ * bill is likely to reconcile them in. Feeds the "Reconcile bill" picker.
+ */
+export async function listPendingBillPhones(): Promise<PhoneWithWarranty[]> {
+  const phones = await prisma.phone.findMany({
+    where: { costPending: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return phones.map(withWarranty);
+}
+
+export async function getPendingBillCount(): Promise<number> {
+  return prisma.phone.count({ where: { costPending: true } });
 }
 
 /** Distinct brands present in phone inventory, for the brand quick-filter buttons. */

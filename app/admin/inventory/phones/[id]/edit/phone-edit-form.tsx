@@ -21,6 +21,7 @@ export interface PhoneEditInitial {
   status: string;
   soldAt: string | null;
   warrantyStatus: WarrantyStatus;
+  costPending: boolean;
 }
 
 const WARRANTY_BADGE = {
@@ -97,6 +98,23 @@ export function PhoneEditForm({
             ))}
           </Select>
         </Field>
+
+        <div className="md:col-span-2 flex items-start gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2.5">
+          <input
+            type="checkbox"
+            id="costPending"
+            name="costPending"
+            defaultChecked={phone.costPending}
+            className="mt-0.5"
+          />
+          <label htmlFor="costPending" className="text-sm">
+            <span className="font-medium">Bill abhi tak nahi aya — cost sirf andaza hai</span>
+            <p className="text-xs text-slate">
+              Yahan se sirf flag theek kiya ja sakta hai (mistake correct karne ke liye). Agar phone sell ho chuka
+              hai to us ka profit theek karne ke liye "Reconcile bill" istemal karein, na ke ye checkbox.
+            </p>
+          </label>
+        </div>
 
         <div className="md:col-span-2">
           <ErrorBanner message={state?.error} />

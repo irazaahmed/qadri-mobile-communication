@@ -38,9 +38,14 @@ export default async function PurchasesPage({
         title="Purchases"
         subtitle={`${purchases.length} invoice(s)`}
         actions={
-          <ButtonLink href="/admin/purchases/new" variant="primary">
-            + New purchase
-          </ButtonLink>
+          <>
+            <ButtonLink href="/admin/purchases/reconcile" variant="outline">
+              Reconcile pending bill
+            </ButtonLink>
+            <ButtonLink href="/admin/purchases/new" variant="primary">
+              + New purchase
+            </ButtonLink>
+          </>
         }
       />
 
@@ -97,6 +102,11 @@ export default async function PurchasesPage({
                       <a href={`/admin/purchases/${p.id}`} className="text-brand-blue hover:underline">
                         {p.invoiceNumber}
                       </a>
+                      {p.isReconciliation ? (
+                        <span className="ml-1.5">
+                          <Badge variant="warning">bill reconciliation</Badge>
+                        </span>
+                      ) : null}
                     </td>
                     <td className={tdClass}>{formatDate(p.createdAt)}</td>
                     <td className={tdClass}>{(p.supplierId && supplierName.get(p.supplierId)) || "-"}</td>

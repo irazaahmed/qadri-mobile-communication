@@ -21,6 +21,7 @@ export async function updatePhoneAction(
   const warrantyMonthsRaw = String(formData.get("warrantyMonths") || "").trim();
   const costPrice = String(formData.get("costPrice") || "").trim();
   const supplierId = String(formData.get("supplierId") || "").trim();
+  const costPending = formData.get("costPending") === "on";
 
   if (!brand || !model || !condition || !costPrice) {
     return { error: "Brand, model, condition and cost price are required." };
@@ -37,6 +38,7 @@ export async function updatePhoneAction(
       warrantyMonths: warrantyMonthsRaw ? Number(warrantyMonthsRaw) : null,
       costPrice,
       supplierId: supplierId || null,
+      costPending,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to update phone." };

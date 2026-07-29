@@ -257,6 +257,155 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
   });
 }
 
+export interface ReconcilePendingBillLineInput {
+  phoneId: string;
+  /** The actual per-unit cost from the supplier's real bill. */
+  rate: number | string;
+}
+
+export interface ReconcilePendingBillInput {
+  /** Always required — a real bill always names a specific company, unlike a cash purchase which may not. */
+  supplierId: string;
+  paymentType: PaymentType;
+  /** Required (and used) only when paymentType === "CREDIT". */
+  creditDays?: number | null;
+  phones: ReconcilePendingBillLineInput[];
+}
+
+/**
+ * Records the supplier's actual bill for phone(s) that were already added to
+ * stock (and possibly already sold) on an estimated cost, because the real
+ * invoice arrived days later than the phone itself. Unlike createPurchase,
+ * this never creates a new Phone row — it attaches a real Purchase/PurchaseItem
+ * to phones that already exist, corrects their costPrice to the real rate,
+ * clears costPending, and — this is the one deliberate exception to "never
+ * recompute historical profit from current cost" — corrects the SaleItem
+ * snapshot too if the phone was already sold on the estimate, so profit
+ * reports reflect the true number once the bill is known.
+ */
+export async function reconcilePendingBillPurchase(input: ReconcilePendingBillInput): Promise<PurchaseWithItems> {
+  if (!input.supplierId) {
+    throw new Error("Supplier is required — a bill always comes from a specific company.");
+  }
+  if (!input.phones || input.phones.length === 0) {
+    throw new Error("Select at least one pending-bill phone to reconcile.");
+  }
+  if (input.paymentType === PaymentType.CREDIT && !input.creditDays) {
+    throw new Error("creditDays is required for a CREDIT bill.");
+  }
+
+  const computed = input.phones.map((p) => ({ phoneId: p.phoneId, rate: new Prisma.Decimal(p.rate) }));
+  const totalAmount = computed.reduce((sum, c) => sum.plus(c.rate), new Prisma.Decimal(0));
+
+  return prisma.$transaction(async (tx) => {
+    const invoiceNumber = await generatePurchaseInvoiceNumber(tx);
+    const now = new Date();
+    const isCash = input.paymentType === PaymentType.CASH;
+    const dueDate = !isCash && input.creditDays ? new Date(now.getTime() + input.creditDays * 86_400_000) : null;
+
+    const purchase = await tx.purchase.create({
+      data: {
+        invoiceNumber,
+        supplierId: input.supplierId,
+        paymentType: input.paymentType,
+        creditDays: isCash ? null : input.creditDays ?? null,
+        dueDate,
+        totalAmount,
+        paidAmount: isCash ? totalAmount : new Prisma.Decimal(0),
+        status: isCash ? PaymentStatus.PAID : PaymentStatus.UNPAID,
+        isReconciliation: true,
+      },
+    });
+
+    for (const { phoneId, rate } of computed) {
+      const phone = await tx.phone.findUnique({
+        where: { id: phoneId },
+        include: { purchaseItem: true, saleItem: true },
+      });
+      if (!phone) {
+        throw new Error(`Phone ${phoneId} not found.`);
+      }
+      if (!phone.costPending) {
+        throw new Error(`${phone.brand} ${phone.model} (${phone.imei ?? "no IMEI"}) isn't marked as awaiting a bill.`);
+      }
+      if (phone.purchaseItem) {
+        throw new Error(`${phone.brand} ${phone.model} already has a purchase invoice linked — can't reconcile it again.`);
+      }
+
+      await tx.purchaseItem.create({
+        data: {
+          purchaseId: purchase.id,
+          itemType: PurchaseItemType.PHONE,
+          phoneId,
+          rate,
+          lineTotal: rate,
+        },
+      });
+
+      await tx.phone.update({
+        where: { id: phoneId },
+        data: { costPrice: rate, costPending: false, supplierId: input.supplierId },
+      });
+
+      if (phone.saleItem) {
+        await tx.saleItem.update({ where: { id: phone.saleItem.id }, data: { costAtSale: rate } });
+      }
+    }
+
+    // Ledger — mirrors createPurchase's CASH/CREDIT branches. Supplier is
+    // always present here (validated above), unlike a plain cash purchase.
+    if (isCash) {
+      const payment = await tx.payment.create({
+        data: {
+          direction: PaymentDirection.PAYABLE,
+          supplierId: input.supplierId,
+          purchaseId: purchase.id,
+          amount: totalAmount,
+          method: PaymentMethod.CASH,
+          note: `Immediate cash settlement for bill reconciliation ${invoiceNumber}`,
+        },
+      });
+
+      await appendSupplierLedger(tx, {
+        supplierId: input.supplierId,
+        purchaseId: purchase.id,
+        type: "PURCHASE",
+        amount: totalAmount,
+        note: `Bill reconciliation ${invoiceNumber}`,
+      });
+
+      await appendSupplierLedger(tx, {
+        supplierId: input.supplierId,
+        purchaseId: purchase.id,
+        paymentId: payment.id,
+        type: "PAYMENT",
+        amount: totalAmount.negated(),
+        note: `Cash payment for bill reconciliation ${invoiceNumber}`,
+      });
+
+      await appendCashLedger(tx, {
+        sourceType: "PURCHASE",
+        sourceId: purchase.id,
+        amount: totalAmount.negated(),
+        note: `Bill reconciliation ${invoiceNumber}`,
+      });
+    } else {
+      await appendSupplierLedger(tx, {
+        supplierId: input.supplierId,
+        purchaseId: purchase.id,
+        type: "PURCHASE",
+        amount: totalAmount,
+        note: `Bill reconciliation ${invoiceNumber} (credit, due ${dueDate?.toISOString() ?? "n/a"})`,
+      });
+    }
+
+    return tx.purchase.findUniqueOrThrow({
+      where: { id: purchase.id },
+      include: { items: true },
+    });
+  });
+}
+
 export interface PurchaseSearchFilters {
   supplierId?: string;
   status?: PaymentStatus;
@@ -299,6 +448,11 @@ export async function deletePurchase(purchaseId: string): Promise<void> {
     });
     if (!purchase) {
       throw new Error("Purchase not found.");
+    }
+    if (purchase.isReconciliation) {
+      throw new Error(
+        `${purchase.invoiceNumber} is a bill-reconciliation purchase for phones that already existed in stock — deleting it isn't supported, since the normal reversal would hard-delete those real phone records. If a rate was entered wrong, correct the phone's cost directly on its Edit page instead.`
+      );
     }
 
     const paymentCount = await tx.payment.count({ where: { purchaseId } });

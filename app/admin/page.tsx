@@ -4,6 +4,7 @@ import {
   getOutstandingPayables,
   getOutstandingReceivables,
   getOutstandingTotals,
+  getPendingBillPhones,
   getTodayProfit,
   getTodayStats,
   getWarrantyExpiringPhones,
@@ -12,7 +13,7 @@ import { Badge, ButtonLink, Card, EmptyState, PageHeader, tableWrap, table, thCl
 import { formatCurrency, formatDate, isOverdue } from "./_lib/format";
 
 export default async function DashboardPage() {
-  const [today, todayProfit, cashBalance, lowStock, payables, receivables, totals, warrantyExpiring] = await Promise.all([
+  const [today, todayProfit, cashBalance, lowStock, payables, receivables, totals, warrantyExpiring, pendingBills] = await Promise.all([
     getTodayStats(),
     getTodayProfit(),
     getCashBalance(),
@@ -21,6 +22,7 @@ export default async function DashboardPage() {
     getOutstandingReceivables(8),
     getOutstandingTotals(),
     getWarrantyExpiringPhones(30),
+    getPendingBillPhones(8),
   ]);
 
   return (
@@ -204,6 +206,35 @@ export default async function DashboardPage() {
                 <Badge variant="warning">{p.daysLeft === 0 ? "expires today" : `${p.daysLeft}d left`}</Badge>
               </a>
             ))}
+          </div>
+        )}
+      </Card>
+      <Card className="mt-6 p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-brand-blue">Phones awaiting supplier bill</h2>
+          <ButtonLink href="/admin/purchases/reconcile" variant="ghost" size="sm">
+            Reconcile
+          </ButtonLink>
+        </div>
+        {pendingBills.total === 0 ? (
+          <EmptyState label="No phones waiting on a supplier bill." />
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {pendingBills.rows.map((p) => (
+              <a
+                key={p.id}
+                href={`/admin/inventory/phones/${p.id}/edit`}
+                className="flex items-center gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-sm hover:bg-warning/10"
+              >
+                <span className="font-medium">
+                  {p.brand} {p.model} {p.imei ? <span className="font-mono text-xs text-slate">{p.imei}</span> : null}
+                </span>
+                <Badge variant="warning">est. {formatCurrency(p.costPrice)}</Badge>
+              </a>
+            ))}
+            {pendingBills.total > pendingBills.rows.length ? (
+              <span className="self-center text-xs text-slate">+{pendingBills.total - pendingBills.rows.length} more</span>
+            ) : null}
           </div>
         )}
       </Card>

@@ -22,6 +22,7 @@ export async function createPhoneAction(
   const supplierId = String(formData.get("supplierId") || "").trim();
   const quantityRaw = String(formData.get("quantity") || "").trim();
   const quantity = quantityRaw ? Number(quantityRaw) : 1;
+  const costPending = formData.get("costPending") === "on";
 
   if (!brand || !model || !condition || !costPrice) {
     return { error: "Brand, model, condition and cost price are required." };
@@ -47,6 +48,7 @@ export async function createPhoneAction(
       costPrice,
       supplierId: supplierId || null,
       quantity,
+      costPending,
     });
     count = result.count;
   } catch (error) {

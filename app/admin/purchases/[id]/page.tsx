@@ -42,7 +42,12 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
       <PageHeader
         title={purchase.invoiceNumber}
         subtitle={`${supplier?.name ?? "No supplier"} — ${formatDate(purchase.createdAt)}`}
-        actions={<Badge variant={STATUS_BADGE[purchase.status]}>{purchase.status}</Badge>}
+        actions={
+          <>
+            {purchase.isReconciliation ? <Badge variant="warning">Bill reconciliation</Badge> : null}
+            <Badge variant={STATUS_BADGE[purchase.status]}>{purchase.status}</Badge>
+          </>
+        }
       />
 
       <Card className="mb-6 grid grid-cols-2 gap-4 p-5 md:grid-cols-4">
@@ -155,20 +160,28 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
 
       <Card className="mt-6 p-5">
         <h2 className="mb-3 font-semibold text-danger">Danger zone</h2>
-        <ConfirmDeleteButton
-          action={deletePurchaseAction.bind(null, purchase.id)}
-          confirmPhrase={purchase.invoiceNumber}
-          title={`Delete ${purchase.invoiceNumber}?`}
-          consequences={[
-            "Deletes every phone this invoice added to stock (only allowed if still in stock — unsold).",
-            "Reverses the accessory quantity this invoice added (only allowed if not already sold elsewhere).",
-            "Reverses this invoice's supplier payable and cash effect.",
-            payments.length > 0
-              ? "Blocked — delete the payment(s) above first."
-              : "Blocked if any payment is recorded against this invoice.",
-          ]}
-          label="Delete this purchase"
-        />
+        {purchase.isReconciliation ? (
+          <p className="text-sm text-slate">
+            Ye ek bill-reconciliation invoice hai — ye phones pehle hi stock/sale mein maujood the, isliye is invoice
+            ko delete karna support nahi hai (normal reversal un real phone records ko hi delete kar deta). Agar rate
+            ghalat likha gaya hai, phone ka cost seedha uske Edit page se theek karein.
+          </p>
+        ) : (
+          <ConfirmDeleteButton
+            action={deletePurchaseAction.bind(null, purchase.id)}
+            confirmPhrase={purchase.invoiceNumber}
+            title={`Delete ${purchase.invoiceNumber}?`}
+            consequences={[
+              "Deletes every phone this invoice added to stock (only allowed if still in stock — unsold).",
+              "Reverses the accessory quantity this invoice added (only allowed if not already sold elsewhere).",
+              "Reverses this invoice's supplier payable and cash effect.",
+              payments.length > 0
+                ? "Blocked — delete the payment(s) above first."
+                : "Blocked if any payment is recorded against this invoice.",
+            ]}
+            label="Delete this purchase"
+          />
+        )}
       </Card>
     </div>
   );
