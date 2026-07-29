@@ -53,12 +53,18 @@ export async function appendCashLedger(
 }
 
 /**
- * Bank ledger — entirely independent of CashLedgerEntry (see the model
- * comment in schema.prisma). No shop purchase/sale/payment/expense/claim
- * code may call this, and this must never call appendCashLedger.
+ * Bank ledger — independent of CashLedgerEntry (see the model comment in
+ * schema.prisma): the two never double-count the same rupee. Manual entries
+ * (opening balance, ad-hoc deposits/withdrawals) leave sourceType/sourceId
+ * null. The one deliberate exception is createSale writing the bank-transfer
+ * portion of a sale here directly (sourceType "SALE", sourceId = Sale.id),
+ * since that money genuinely landed in the bank account, not the cash
+ * drawer.
  */
 export interface AppendBankLedgerInput {
   type: string;
+  sourceType?: string | null;
+  sourceId?: string | null;
   amount: Prisma.Decimal | number | string;
   note?: string | null;
 }
@@ -68,7 +74,10 @@ export interface AppendBankLedgerInput {
  * `amount` is signed: positive = money in, negative = money out.
  * `balanceAfter = previous balanceAfter + amount` (0 if no previous entry).
  */
-export async function appendBankLedger(tx: Tx, { type, amount, note }: AppendBankLedgerInput) {
+export async function appendBankLedger(
+  tx: Tx,
+  { type, sourceType, sourceId, amount, note }: AppendBankLedgerInput
+) {
   const signedAmount = new Prisma.Decimal(amount);
 
   const latest = await tx.bankLedgerEntry.findFirst({
@@ -81,6 +90,8 @@ export async function appendBankLedger(tx: Tx, { type, amount, note }: AppendBan
   return tx.bankLedgerEntry.create({
     data: {
       type,
+      sourceType: sourceType ?? null,
+      sourceId: sourceId ?? null,
       amount: signedAmount,
       balanceAfter,
       note: note ?? null,

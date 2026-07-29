@@ -50,6 +50,7 @@ export async function deleteSaleAction(saleId: string): Promise<{ error: string 
   revalidatePath("/admin/inventory/phones");
   revalidatePath("/admin/inventory/accessories");
   revalidatePath("/admin/customers");
+  revalidatePath("/admin/bank");
   revalidatePath("/admin");
   redirect("/admin/sales?deleted=1");
 }

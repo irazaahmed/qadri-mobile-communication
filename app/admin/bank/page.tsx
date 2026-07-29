@@ -17,7 +17,10 @@ export default async function BankPage() {
 
   return (
     <div>
-      <PageHeader title="Bank" subtitle="Separate from shop cash — deposits, credits, and withdrawals only." />
+      <PageHeader
+        title="Bank"
+        subtitle="Independent from shop cash — manual deposits/withdrawals, plus the bank-transfer portion of any sale."
+      />
 
       <Card className="mb-6 p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-slate">Bank balance</p>
@@ -61,7 +64,17 @@ export default async function BankPage() {
                     </span>
                   </td>
                   <td className={tdClass}>{formatCurrency(e.balanceAfter.toString())}</td>
-                  <td className={tdClass}>{e.note ?? "-"}</td>
+                  <td className={tdClass}>
+                    {e.note ?? "-"}
+                    {e.sourceType === "SALE" && e.sourceId && e.amount.greaterThan(0) ? (
+                      <>
+                        {" "}
+                        <a href={`/admin/sales/${e.sourceId}/invoice`} className="text-brand-blue hover:underline">
+                          View sale
+                        </a>
+                      </>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

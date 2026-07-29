@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { appendCashLedger, appendCustomerLedger } from "@/lib/ledger";
+import { appendCashLedger, appendCustomerLedger, appendBankLedger } from "@/lib/ledger";
 import { markPhoneSold, decrementAccessoryStock } from "@/lib/stock";
 import { generateSaleInvoiceNumber } from "@/lib/invoice";
 import {
@@ -31,6 +31,15 @@ import {
  *   from paid vs total, CustomerLedgerEntry(type: "SALE", +amountDue) where
  *   amountDue = totalAmount - paidAmount, CashLedgerEntry(+paidAmount,
  *   sourceType "SALE") for whatever was collected upfront (0 if none).
+ *
+ * Split payment (cash / bank transfer / credit, all in one sale): `paidAmount`
+ * is "how much was collected right now" (cash + bank combined, same as
+ * before); `bankAmount` is the slice of that which actually came in via bank
+ * transfer rather than the cash drawer. The bank slice writes to
+ * BankLedgerEntry instead of CashLedgerEntry (sourceType "SALE", so it's
+ * traceable back to this invoice) — the two never overlap for the same
+ * rupee. Whatever isn't covered by paidAmount is still the ordinary credit
+ * amountDue, unaffected by how the paid portion was split.
  */
 
 export interface SalePhoneLineInput {
@@ -54,8 +63,10 @@ export interface CreateSaleInput {
   paymentType: PaymentType;
   /** Required (and used) only when paymentType === "CREDIT". */
   creditDays?: number | null;
-  /** Only used for CREDIT — amount collected upfront, may be 0. Ignored for CASH. */
+  /** Amount collected right now (cash + bank combined). For CASH this is always totalAmount; for CREDIT it may be 0. */
   paidAmount?: number | string;
+  /** Slice of `paidAmount` received via bank transfer rather than the cash drawer — must be between 0 and paidAmount. Defaults to 0 (fully cash). */
+  bankAmount?: number | string;
   items: SaleLineInput[];
 }
 
@@ -104,6 +115,15 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
       throw new Error("paidAmount cannot exceed the sale's totalAmount.");
     }
   }
+
+  const bankAmount = new Prisma.Decimal(input.bankAmount ?? 0);
+  if (bankAmount.isNegative()) {
+    throw new Error("bankAmount cannot be negative.");
+  }
+  if (bankAmount.greaterThan(paidAmount)) {
+    throw new Error("bankAmount cannot exceed paidAmount (the amount collected right now).");
+  }
+  const cashAmount = paidAmount.minus(bankAmount);
 
   return prisma.$transaction(async (tx) => {
     // Hard guards re-checked inside the transaction — abort the whole sale
@@ -183,9 +203,12 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
       },
     });
 
+    const itemDescriptions: string[] = [];
+
     for (const { line, rate, lineTotal } of computedLines) {
       if (line.itemType === "PHONE") {
-        const { costAtSale } = await markPhoneSold(tx, line.phoneId, now, rate);
+        const { phone, costAtSale } = await markPhoneSold(tx, line.phoneId, now, rate);
+        itemDescriptions.push(`${phone.brand} ${phone.model}${phone.imei ? ` (${phone.imei})` : ""}`);
 
         await tx.saleItem.create({
           data: {
@@ -199,6 +222,7 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
         });
       } else {
         const accessory = await decrementAccessoryStock(tx, line.accessoryId, line.quantity);
+        itemDescriptions.push(`${accessory.name} x${line.quantity}`);
 
         await tx.saleItem.create({
           data: {
@@ -214,13 +238,30 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
       }
     }
 
-    if (isCash) {
-      await appendCashLedger(tx, {
+    // Bank-transfer portion of the amount collected right now writes
+    // directly to BankLedgerEntry instead of CashLedgerEntry — see the
+    // bankAmount doc comment on CreateSaleInput. Applies the same way
+    // whether this is a CASH sale (fully paid) or a CREDIT sale (partly
+    // paid now, rest due later).
+    if (bankAmount.greaterThan(0)) {
+      await appendBankLedger(tx, {
+        type: "SALE",
         sourceType: "SALE",
         sourceId: sale.id,
-        amount: totalAmount,
-        note: `Sale ${invoiceNumber}`,
+        amount: bankAmount,
+        note: `Sale ${invoiceNumber} — ${itemDescriptions.join(", ")} — Rs ${bankAmount.toString()} received via bank transfer`,
       });
+    }
+
+    if (isCash) {
+      if (cashAmount.greaterThan(0)) {
+        await appendCashLedger(tx, {
+          sourceType: "SALE",
+          sourceId: sale.id,
+          amount: cashAmount,
+          note: `Sale ${invoiceNumber}`,
+        });
+      }
     } else {
       const amountDue = totalAmount.minus(paidAmount);
 
@@ -236,12 +277,14 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
         }`,
       });
 
-      await appendCashLedger(tx, {
-        sourceType: "SALE",
-        sourceId: sale.id,
-        amount: paidAmount,
-        note: `Sale ${invoiceNumber} — upfront payment`,
-      });
+      if (cashAmount.greaterThan(0)) {
+        await appendCashLedger(tx, {
+          sourceType: "SALE",
+          sourceId: sale.id,
+          amount: cashAmount,
+          note: `Sale ${invoiceNumber} — upfront payment`,
+        });
+      }
     }
 
     return tx.sale.findUniqueOrThrow({
@@ -328,46 +371,52 @@ export async function deleteSale(saleId: string): Promise<void> {
 
     // Reverse the money side with offsetting entries — never by touching
     // historical rows, so every balanceAfter chain before this point stays
-    // correct.
-    if (sale.paymentType === PaymentType.CASH) {
+    // correct. Reverse exactly what was actually logged at creation (looked
+    // up by sourceId/saleId), not a recomputation from sale.paidAmount/
+    // totalAmount — those can now diverge from what was really logged,
+    // since advance-credit auto-adjustment can inflate sale.paidAmount
+    // without a new CashLedgerEntry, and a bank-transfer split means the
+    // "paid" amount may be spread across CashLedgerEntry and
+    // BankLedgerEntry rather than sitting entirely in one. The
+    // payment-count guard above guarantees these are still exactly the
+    // entries createSale itself wrote, since any later Payment would have
+    // blocked this delete already.
+    if (sale.customerId) {
+      const originalSaleEntry = await tx.customerLedgerEntry.findFirst({
+        where: { saleId: sale.id, type: "SALE" },
+      });
+      const amountToReverse = originalSaleEntry?.amount ?? sale.totalAmount.minus(sale.paidAmount);
+      await appendCustomerLedger(tx, {
+        customerId: sale.customerId,
+        type: "VOID",
+        amount: amountToReverse.negated(),
+        note: `Deleted sale ${sale.invoiceNumber}`,
+      });
+    }
+
+    const originalCashEntry = await tx.cashLedgerEntry.findFirst({
+      where: { sourceType: "SALE", sourceId: sale.id },
+    });
+    if (originalCashEntry && originalCashEntry.amount.greaterThan(0)) {
       await appendCashLedger(tx, {
         sourceType: "SALE",
         sourceId: sale.id,
-        amount: sale.totalAmount.negated(),
+        amount: originalCashEntry.amount.negated(),
         note: `Deleted sale ${sale.invoiceNumber}`,
       });
-    } else {
-      // Reverse exactly what was actually logged at creation, not a
-      // recomputation from sale.paidAmount/totalAmount — those two can now
-      // diverge from what was really logged, since advance-credit
-      // auto-adjustment (createSale) can inflate sale.paidAmount without
-      // ever writing a new CashLedgerEntry for the advance-covered portion.
-      // The payment-count guard above guarantees these are still exactly
-      // the two entries createSale itself wrote, since any later Payment
-      // would have blocked this delete already.
-      if (sale.customerId) {
-        const originalSaleEntry = await tx.customerLedgerEntry.findFirst({
-          where: { saleId: sale.id, type: "SALE" },
-        });
-        const amountToReverse = originalSaleEntry?.amount ?? sale.totalAmount.minus(sale.paidAmount);
-        await appendCustomerLedger(tx, {
-          customerId: sale.customerId,
-          type: "VOID",
-          amount: amountToReverse.negated(),
-          note: `Deleted sale ${sale.invoiceNumber}`,
-        });
-      }
-      const originalCashEntry = await tx.cashLedgerEntry.findFirst({
-        where: { sourceType: "SALE", sourceId: sale.id },
+    }
+
+    const originalBankEntry = await tx.bankLedgerEntry.findFirst({
+      where: { sourceType: "SALE", sourceId: sale.id },
+    });
+    if (originalBankEntry) {
+      await appendBankLedger(tx, {
+        type: "SALE",
+        sourceType: "SALE",
+        sourceId: sale.id,
+        amount: originalBankEntry.amount.negated(),
+        note: `Deleted sale ${sale.invoiceNumber} — reversing bank transfer`,
       });
-      if (originalCashEntry && originalCashEntry.amount.greaterThan(0)) {
-        await appendCashLedger(tx, {
-          sourceType: "SALE",
-          sourceId: sale.id,
-          amount: originalCashEntry.amount.negated(),
-          note: `Deleted sale ${sale.invoiceNumber} — reversing upfront payment`,
-        });
-      }
     }
 
     await tx.sale.delete({ where: { id: saleId } });

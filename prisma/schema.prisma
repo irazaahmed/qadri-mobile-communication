@@ -327,18 +327,24 @@ model Expense {
   createdAt DateTime @default(now())
 }
 
-// ---------- Bank Ledger (fully independent of shop cash/sales) ----------
+// ---------- Bank Ledger (independent running balance, fed by real bank transfers) ----------
 //
-// A separate running balance for a bank account, entirely disconnected from
-// CashLedgerEntry — no purchase, sale, payment, expense, or claim ever
-// writes here, and this never writes to the shop cash ledger. The opening
-// balance is just the first entry (type "Opening balance", direction IN);
-// there is no separate "account" header row, mirroring how CashLedgerEntry
-// itself has no header — the ledger IS the account.
+// A separate running balance for a bank account, independent of
+// CashLedgerEntry — the two never double-count the same rupee. Manual
+// entries (opening balance, ad-hoc deposits/withdrawals) are typed in
+// directly on the Bank page. The one deliberate exception: when a sale is
+// paid (in full or in part) via a real bank transfer, that portion writes
+// here directly (sourceType "SALE", sourceId = Sale.id) instead of to
+// CashLedgerEntry, since it genuinely landed in the bank account, not the
+// shop's cash drawer — see createSale's bankAmount handling. There is no
+// separate "account" header row, mirroring how CashLedgerEntry itself has
+// no header — the ledger IS the account.
 
 model BankLedgerEntry {
   id           String   @id @default(cuid())
-  type         String   // free text: "Opening balance" | "Deposit" | "Credit" | "Withdrawal" | ...
+  type         String   // free text: "Opening balance" | "Deposit" | "Credit" | "Withdrawal" | "SALE" | ...
+  sourceType   String?  // "SALE" when auto-written from a sale's bank-transfer portion; null for manual entries
+  sourceId     String?  // Sale.id when sourceType = "SALE"
   amount       Decimal  @db.Decimal(12, 2) // signed: + in, - out
   balanceAfter Decimal  @db.Decimal(12, 2)
   note         String?

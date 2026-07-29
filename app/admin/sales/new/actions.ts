@@ -17,6 +17,7 @@ export async function createSaleAction(input: CreateSaleInput): Promise<CreateSa
     revalidatePath("/admin/sales");
     revalidatePath("/admin/inventory/phones");
     revalidatePath("/admin/inventory/accessories");
+    revalidatePath("/admin/bank");
     return { id: sale.id, invoiceNumber: sale.invoiceNumber };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record sale." };

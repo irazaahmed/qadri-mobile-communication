@@ -78,9 +78,12 @@ export function SaleForm({
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [addingCustomer, startAddingCustomer] = useTransition();
 
-  const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CASH");
+  const [paymentMode, setPaymentMode] = useState<"CASH" | "CREDIT" | "BANK" | "CUSTOM">("CASH");
   const [creditDays, setCreditDays] = useState("30");
   const [paidAmount, setPaidAmount] = useState("0");
+  const [customCash, setCustomCash] = useState("");
+  const [customBank, setCustomBank] = useState("");
+  const [customCredit, setCustomCredit] = useState("");
 
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -125,6 +128,10 @@ export function SaleForm({
   }, [customerList, customerSearch]);
 
   const total = useMemo(() => lines.reduce((sum, l) => sum + lineTotal(l), 0), [lines]);
+
+  const customSum = (Number(customCash) || 0) + (Number(customBank) || 0) + (Number(customCredit) || 0);
+  const willBeCredit =
+    paymentMode === "CREDIT" || (paymentMode === "CUSTOM" && (Number(customCredit) || 0) > 0);
 
   function addPhoneLine(p: PhoneOption) {
     setLines((prev) => [
@@ -196,6 +203,34 @@ export function SaleForm({
       setError("Add at least one phone or accessory line.");
       return;
     }
+
+    let paymentType: "CASH" | "CREDIT";
+    let finalPaidAmount: number;
+    let finalBankAmount: number;
+
+    if (paymentMode === "CASH") {
+      paymentType = "CASH";
+      finalPaidAmount = total;
+      finalBankAmount = 0;
+    } else if (paymentMode === "BANK") {
+      paymentType = "CASH";
+      finalPaidAmount = total;
+      finalBankAmount = total;
+    } else if (paymentMode === "CREDIT") {
+      paymentType = "CREDIT";
+      finalPaidAmount = Number(paidAmount) || 0;
+      finalBankAmount = 0;
+    } else {
+      if (Math.abs(customSum - total) >= 0.01) {
+        setError(`Cash + bank transfer + credit (${formatCurrency(customSum)}) must equal the sale total (${formatCurrency(total)}).`);
+        return;
+      }
+      const credit = Number(customCredit) || 0;
+      paymentType = credit > 0 ? "CREDIT" : "CASH";
+      finalPaidAmount = (Number(customCash) || 0) + (Number(customBank) || 0);
+      finalBankAmount = Number(customBank) || 0;
+    }
+
     if (paymentType === "CREDIT" && !selectedCustomer) {
       setError("Select or add a customer for a credit sale.");
       return;
@@ -238,7 +273,8 @@ export function SaleForm({
         customerId: selectedCustomer?.id ?? null,
         paymentType,
         creditDays: paymentType === "CREDIT" ? Number(creditDays) : null,
-        paidAmount: paymentType === "CREDIT" ? paidAmount : undefined,
+        paidAmount: finalPaidAmount,
+        bankAmount: finalBankAmount,
         items,
       });
 
@@ -270,7 +306,7 @@ export function SaleForm({
                     Clear
                   </button>
                 </div>
-                {Number(selectedCustomer.advanceCredit) > 0 && paymentType === "CREDIT" ? (
+                {Number(selectedCustomer.advanceCredit) > 0 && willBeCredit ? (
                   <p className="text-xs text-success">
                     This customer has {formatCurrency(selectedCustomer.advanceCredit)} advance credit — it will be
                     automatically applied to this sale. (Advance credit khud is sale mein adjust ho jayega.)
@@ -326,17 +362,26 @@ export function SaleForm({
 
           <div>
             <p className="mb-1 text-xs font-medium text-slate">Payment type *</p>
-            <div className="flex gap-4 pt-2 text-sm">
+            <div className="flex flex-wrap gap-4 pt-2 text-sm">
               <label className="flex items-center gap-1.5">
-                <input type="radio" checked={paymentType === "CASH"} onChange={() => setPaymentType("CASH")} />
+                <input type="radio" checked={paymentMode === "CASH"} onChange={() => setPaymentMode("CASH")} />
                 Cash
               </label>
               <label className="flex items-center gap-1.5">
-                <input type="radio" checked={paymentType === "CREDIT"} onChange={() => setPaymentType("CREDIT")} />
+                <input type="radio" checked={paymentMode === "CREDIT"} onChange={() => setPaymentMode("CREDIT")} />
                 Credit
               </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={paymentMode === "BANK"} onChange={() => setPaymentMode("BANK")} />
+                Bank transfer
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={paymentMode === "CUSTOM"} onChange={() => setPaymentMode("CUSTOM")} />
+                Custom (split)
+              </label>
             </div>
-            {paymentType === "CREDIT" ? (
+
+            {paymentMode === "CREDIT" ? (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <Field label="Credit days *">
                   <Input type="number" min={1} value={creditDays} onChange={(e) => setCreditDays(e.target.value)} />
@@ -350,6 +395,58 @@ export function SaleForm({
                     onChange={(e) => setPaidAmount(e.target.value)}
                   />
                 </Field>
+              </div>
+            ) : null}
+
+            {paymentMode === "CUSTOM" ? (
+              <div className="mt-3 flex flex-col gap-3">
+                <p className="text-xs text-slate">
+                  Split this sale across cash, bank transfer, and credit — the three must add up to the total.
+                  (Cash, bank transfer aur credit teeno ka jama total ke barabar hona chahiye.)
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Cash">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customCash}
+                      onChange={(e) => setCustomCash(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Bank transfer">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customBank}
+                      onChange={(e) => setCustomBank(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Credit (due later)">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customCredit}
+                      onChange={(e) => setCustomCredit(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <p className={`text-xs ${Math.abs(customSum - total) < 0.01 ? "text-success" : "text-danger"}`}>
+                  Split total: {formatCurrency(customSum)} / Sale total: {formatCurrency(total)}
+                </p>
+                {willBeCredit ? (
+                  <Field label="Credit days *" hint="For the credit portion above.">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={creditDays}
+                      onChange={(e) => setCreditDays(e.target.value)}
+                      className="max-w-[160px]"
+                    />
+                  </Field>
+                ) : null}
               </div>
             ) : null}
           </div>
