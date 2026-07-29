@@ -28,6 +28,8 @@ export interface CustomerOption {
   id: string;
   name: string;
   phone: string;
+  /** Existing advance credit this customer has with us (0 if none) — auto-applied to a new credit sale. */
+  advanceCredit: string;
 }
 
 type PhoneLine = { key: string; itemType: "PHONE"; phoneId: string; label: string; rate: string };
@@ -174,11 +176,13 @@ export function SaleForm({
         setCustomerError(result.error);
         return;
       }
+      const existing = customerList.find((c) => c.id === result.id);
+      const withBalance: CustomerOption = { ...result, advanceCredit: existing?.advanceCredit ?? "0" };
       setCustomerList((prev) => {
-        const exists = prev.some((c) => c.id === result.id);
-        return exists ? prev.map((c) => (c.id === result.id ? result : c)) : [...prev, result];
+        const exists = prev.some((c) => c.id === withBalance.id);
+        return exists ? prev.map((c) => (c.id === withBalance.id ? withBalance : c)) : [...prev, withBalance];
       });
-      setSelectedCustomer(result);
+      setSelectedCustomer(withBalance);
       setNewCustomerName("");
       setNewCustomerPhone("");
     });
@@ -254,16 +258,24 @@ export function SaleForm({
           <div>
             <p className="mb-1 text-xs font-medium text-slate">Customer (optional for cash)</p>
             {selectedCustomer ? (
-              <div className="flex items-center gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-3 py-2 text-sm">
-                <span className="font-medium">{selectedCustomer.name}</span>
-                <span className="text-slate">{selectedCustomer.phone}</span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCustomer(null)}
-                  className="ml-auto text-xs text-danger hover:underline"
-                >
-                  Clear
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-3 py-2 text-sm">
+                  <span className="font-medium">{selectedCustomer.name}</span>
+                  <span className="text-slate">{selectedCustomer.phone}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomer(null)}
+                    className="ml-auto text-xs text-danger hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+                {Number(selectedCustomer.advanceCredit) > 0 && paymentType === "CREDIT" ? (
+                  <p className="text-xs text-success">
+                    This customer has {formatCurrency(selectedCustomer.advanceCredit)} advance credit — it will be
+                    automatically applied to this sale. (Advance credit khud is sale mein adjust ho jayega.)
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="flex flex-col gap-2">

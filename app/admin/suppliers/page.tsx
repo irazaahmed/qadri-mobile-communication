@@ -73,7 +73,9 @@ export default async function SuppliersPage({
             <tbody>
               {suppliers.map((s) => {
                 const balance = balances.get(s.id) ?? "0";
-                const owed = Number(balance) > 0;
+                const balanceNum = Number(balance);
+                const owed = balanceNum > 0;
+                const advance = balanceNum < 0;
                 return (
                 <tr key={s.id} className={trHover}>
                   <td className={`${tdClass} font-medium`}>
@@ -84,9 +86,15 @@ export default async function SuppliersPage({
                   <td className={tdClass}>{s.phone || "-"}</td>
                   <td className={tdClass}>{s.address || "-"}</td>
                   <td className={tdClass}>
-                    <span className={owed ? "font-medium text-danger" : "text-slate"}>
-                      {formatCurrency(balance)}
-                    </span>
+                    {advance ? (
+                      <span className="font-medium text-success">
+                        {formatCurrency(String(-balanceNum))} advance
+                      </span>
+                    ) : (
+                      <span className={owed ? "font-medium text-danger" : "text-slate"}>
+                        {formatCurrency(balance)}
+                      </span>
+                    )}
                   </td>
                   <td className={`${tdClass} flex gap-3`}>
                     <a href={`/admin/suppliers/${s.id}/edit`} className="text-brand-blue hover:underline">

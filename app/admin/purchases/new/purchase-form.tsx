@@ -10,6 +10,8 @@ export interface SupplierOption {
   id: string;
   name: string;
   phone: string | null;
+  /** Existing advance credit we have with this supplier (0 if none) — auto-applied to a new credit purchase. */
+  advanceCredit: string;
 }
 
 type PhoneLine = {
@@ -128,8 +130,9 @@ export function PurchaseForm({
         setSupplierError(result.error);
         return;
       }
-      setSupplierList((prev) => [...prev, result]);
-      setSelectedSupplier(result);
+      const withBalance: SupplierOption = { ...result, advanceCredit: "0" };
+      setSupplierList((prev) => [...prev, withBalance]);
+      setSelectedSupplier(withBalance);
       setNewSupplierName("");
       setNewSupplierPhone("");
     });
@@ -240,16 +243,25 @@ export function PurchaseForm({
               {paymentType === "CREDIT" ? "Supplier *" : "Supplier (optional for cash)"}
             </p>
             {selectedSupplier ? (
-              <div className="flex items-center gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-3 py-2 text-sm">
-                <span className="font-medium">{selectedSupplier.name}</span>
-                {selectedSupplier.phone ? <span className="text-slate">{selectedSupplier.phone}</span> : null}
-                <button
-                  type="button"
-                  onClick={() => setSelectedSupplier(null)}
-                  className="ml-auto text-xs text-danger hover:underline"
-                >
-                  Clear
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 rounded-lg border border-brand-blue/30 bg-brand-blue/5 px-3 py-2 text-sm">
+                  <span className="font-medium">{selectedSupplier.name}</span>
+                  {selectedSupplier.phone ? <span className="text-slate">{selectedSupplier.phone}</span> : null}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSupplier(null)}
+                    className="ml-auto text-xs text-danger hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+                {Number(selectedSupplier.advanceCredit) > 0 && paymentType === "CREDIT" ? (
+                  <p className="text-xs text-success">
+                    We have {formatCurrency(selectedSupplier.advanceCredit)} advance credit with this supplier — it
+                    will be automatically applied to this purchase. (Advance credit khud is purchase mein adjust ho
+                    jayega.)
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="flex flex-col gap-2">

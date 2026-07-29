@@ -134,11 +134,39 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
     const now = new Date();
     const dueDate = !isCash && input.creditDays ? new Date(now.getTime() + input.creditDays * 86_400_000) : null;
 
+    // Advance credit auto-adjustment (credit-and-ledger skill): if this
+    // customer overpaid a previous bulk settlement, their CustomerLedgerEntry
+    // balance is negative — that negative amount IS their available advance
+    // (recordCustomerBulkPayment). Draw it down against whatever's still due
+    // on this new credit sale after `paidAmount` (today's upfront cash, if
+    // any). This only changes the Sale's own paidAmount/status (so it
+    // doesn't sit on the dashboard as outstanding when it's already covered)
+    // — the ledger/cash entries below still use the original `paidAmount`
+    // unchanged, since no new cash moves for the advance-covered portion;
+    // the ledger's own cumulative balanceAfter math is what actually "uses
+    // up" the advance.
+    let advanceApplied = new Prisma.Decimal(0);
+    if (!isCash && input.customerId) {
+      const latestLedger = await tx.customerLedgerEntry.findFirst({
+        where: { customerId: input.customerId },
+        orderBy: { createdAt: "desc" },
+      });
+      const currentBalance = latestLedger?.balanceAfter ?? new Prisma.Decimal(0);
+      if (currentBalance.isNegative()) {
+        const advanceAvailable = currentBalance.negated();
+        const stillDue = totalAmount.minus(paidAmount);
+        if (stillDue.greaterThan(0)) {
+          advanceApplied = Prisma.Decimal.min(advanceAvailable, stillDue);
+        }
+      }
+    }
+    const effectivePaidAmount = paidAmount.plus(advanceApplied);
+
     const status = isCash
       ? PaymentStatus.PAID
-      : paidAmount.greaterThanOrEqualTo(totalAmount)
+      : effectivePaidAmount.greaterThanOrEqualTo(totalAmount)
         ? PaymentStatus.PAID
-        : paidAmount.greaterThan(0)
+        : effectivePaidAmount.greaterThan(0)
           ? PaymentStatus.PARTIAL
           : PaymentStatus.UNPAID;
 
@@ -150,7 +178,7 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
         creditDays: isCash ? null : input.creditDays ?? null,
         dueDate,
         totalAmount,
-        paidAmount,
+        paidAmount: effectivePaidAmount,
         status,
       },
     });
@@ -201,7 +229,11 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
         saleId: sale.id,
         type: "SALE",
         amount: amountDue,
-        note: `Sale ${invoiceNumber} (due ${dueDate?.toISOString() ?? "n/a"})`,
+        note: `Sale ${invoiceNumber} (due ${dueDate?.toISOString() ?? "n/a"})${
+          advanceApplied.greaterThan(0)
+            ? ` — Rs ${advanceApplied.toString()} covered by this customer's existing advance credit`
+            : ""
+        }`,
       });
 
       await appendCashLedger(tx, {
@@ -305,20 +337,34 @@ export async function deleteSale(saleId: string): Promise<void> {
         note: `Deleted sale ${sale.invoiceNumber}`,
       });
     } else {
+      // Reverse exactly what was actually logged at creation, not a
+      // recomputation from sale.paidAmount/totalAmount — those two can now
+      // diverge from what was really logged, since advance-credit
+      // auto-adjustment (createSale) can inflate sale.paidAmount without
+      // ever writing a new CashLedgerEntry for the advance-covered portion.
+      // The payment-count guard above guarantees these are still exactly
+      // the two entries createSale itself wrote, since any later Payment
+      // would have blocked this delete already.
       if (sale.customerId) {
-        const amountDue = sale.totalAmount.minus(sale.paidAmount);
+        const originalSaleEntry = await tx.customerLedgerEntry.findFirst({
+          where: { saleId: sale.id, type: "SALE" },
+        });
+        const amountToReverse = originalSaleEntry?.amount ?? sale.totalAmount.minus(sale.paidAmount);
         await appendCustomerLedger(tx, {
           customerId: sale.customerId,
           type: "VOID",
-          amount: amountDue.negated(),
+          amount: amountToReverse.negated(),
           note: `Deleted sale ${sale.invoiceNumber}`,
         });
       }
-      if (sale.paidAmount.greaterThan(0)) {
+      const originalCashEntry = await tx.cashLedgerEntry.findFirst({
+        where: { sourceType: "SALE", sourceId: sale.id },
+      });
+      if (originalCashEntry && originalCashEntry.amount.greaterThan(0)) {
         await appendCashLedger(tx, {
           sourceType: "SALE",
           sourceId: sale.id,
-          amount: sale.paidAmount.negated(),
+          amount: originalCashEntry.amount.negated(),
           note: `Deleted sale ${sale.invoiceNumber} — reversing upfront payment`,
         });
       }

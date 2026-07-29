@@ -3,6 +3,7 @@
 import { recordSupplierBulkPayment } from "@/lib/actions/payments";
 import type { PaymentMethod } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { formatCurrency } from "../../_lib/format";
 
 export type SupplierBulkPaymentState = { error?: string; success?: string } | undefined;
 
@@ -31,12 +32,19 @@ export async function recordSupplierBulkPaymentAction(
     revalidatePath("/admin/purchases");
     revalidatePath("/admin");
 
-    return {
-      success:
-        result.invoiceNumbers.length === 1
+    const base =
+      result.invoiceNumbers.length === 0
+        ? "Payment recorded."
+        : result.invoiceNumbers.length === 1
           ? `Payment recorded against ${result.invoiceNumbers[0]}.`
-          : `Payment recorded, covering ${result.invoiceNumbers.join(", ")}.`,
-    };
+          : `Payment recorded, covering ${result.invoiceNumbers.join(", ")}.`;
+    const advance = Number(result.advanceAmount);
+    const advanceNote =
+      advance > 0
+        ? ` ${formatCurrency(result.advanceAmount)} was extra — saved as advance credit for this supplier's next credit purchase.`
+        : "";
+
+    return { success: `${base}${advanceNote}` };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record payment." };
   }

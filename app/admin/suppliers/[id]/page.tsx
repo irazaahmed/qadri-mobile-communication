@@ -28,7 +28,9 @@ export default async function SupplierLedgerPage({ params }: { params: Promise<{
   if (!supplier) notFound();
 
   const currentBalance = ledger.length ? ledger[ledger.length - 1].balanceAfter.toString() : "0";
-  const outstandingAmount = Math.max(0, Number(currentBalance));
+  const balanceNum = Number(currentBalance);
+  const outstandingAmount = Math.max(0, balanceNum);
+  const advanceAmount = Math.max(0, -balanceNum);
 
   return (
     <div>
@@ -43,16 +45,30 @@ export default async function SupplierLedgerPage({ params }: { params: Promise<{
       />
 
       <Card className="mb-6 p-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate">Current payable balance</p>
-        <p className="mt-1 text-2xl font-semibold text-danger">{formatCurrency(currentBalance)}</p>
-        {outstandingAmount > 0 ? (
-          <div className="mt-4 border-t border-slate/10 pt-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate">
-              Record payment — clears oldest outstanding purchases first
+        {advanceAmount > 0 ? (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate">
+              Advance credit with this supplier (Is supplier ke pas humara advance)
             </p>
-            <SupplierBulkPaymentForm supplierId={supplier.id} outstanding={outstandingAmount} />
-          </div>
-        ) : null}
+            <p className="mt-1 text-2xl font-semibold text-success">{formatCurrency(String(advanceAmount))}</p>
+            <p className="mt-1 text-xs text-slate">
+              We paid more than what was owed — this will be automatically applied to reduce this supplier&apos;s
+              next credit purchase. (Agli credit purchase mein khud adjust ho jayega.)
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate">Current payable balance</p>
+            <p className="mt-1 text-2xl font-semibold text-danger">{formatCurrency(currentBalance)}</p>
+          </>
+        )}
+        <div className="mt-4 border-t border-slate/10 pt-4">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate">
+            Record payment — clears oldest outstanding purchases first (Purani se nayi invoice tarteeb mein adjust
+            hoga)
+          </p>
+          <SupplierBulkPaymentForm supplierId={supplier.id} outstanding={outstandingAmount} />
+        </div>
       </Card>
 
       <div className="mb-3">

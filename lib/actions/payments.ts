@@ -23,8 +23,10 @@ import {
  * - RECEIVABLE: pays down a Sale. Increases Sale.paidAmount, recomputes
  *   status, CustomerLedgerEntry(PAYMENT, -amount), CashLedgerEntry(+amount,
  *   CREDIT_PAYMENT_IN).
- * All in one prisma.$transaction. Never allows overpaying past the
- * outstanding balance.
+ * All in one prisma.$transaction. A single-invoice payment (this file's
+ * `recordPayment`) never exceeds that one invoice's own outstanding balance —
+ * it's explicitly scoped to one invoice, so overpaying it wouldn't mean
+ * anything.
  *
  * `recordSupplierBulkPayment` / `recordCustomerBulkPayment` below cover the
  * other half of this: a party may owe across several credit invoices at
@@ -33,6 +35,21 @@ import {
  * oldest-due-first outstanding invoices, but still log exactly one
  * CashLedgerEntry — the actual single cash movement — per the
  * cash-ledger-and-profit skill's "one entry per cash-affecting action" rule.
+ *
+ * Unlike the single-invoice path, the bulk path DOES allow the amount to
+ * exceed the party's total outstanding balance (or to be recorded with zero
+ * outstanding at all) — e.g. "customer owes 30,000 but hands over 50,000 and
+ * says settle the rest later." Whatever is left after every outstanding
+ * invoice is fully paid is recorded as a standalone advance: one more
+ * Payment row (purchaseId/saleId left null — it isn't for any specific
+ * invoice) plus a ledger entry that pushes the party's running balance
+ * negative. A negative balance IS the advance — `getSupplierBalances` /
+ * `getCustomerBalances` already expose it via the same balanceAfter number,
+ * no separate field needed. `createPurchase` / `createSale` automatically
+ * draw down that negative balance on the party's next CREDIT invoice (see
+ * the "advance" comments there) — again via the ledger's own cumulative
+ * math, not a separate mechanism, so there is nothing here that needs to
+ * "know" about that later step.
  */
 
 type Tx = Prisma.TransactionClient;
@@ -203,6 +220,8 @@ export interface RecordSupplierBulkPaymentInput {
 export interface BulkPaymentResult {
   amount: string;
   invoiceNumbers: string[];
+  /** Portion of `amount` left over after every outstanding invoice was fully paid — recorded as a standalone advance. "0" when nothing was left over. */
+  advanceAmount: string;
 }
 
 /**
@@ -211,6 +230,10 @@ export interface BulkPaymentResult {
  * the amount across that supplier's outstanding purchases oldest-due-first
  * (same ordering as the dashboard payable widget), same as paying each
  * invoice one by one would, but as a single cash movement.
+ *
+ * Amount is allowed to exceed the total outstanding (or to be paid with zero
+ * outstanding) — any leftover becomes a standalone advance credit for this
+ * supplier (see file header comment).
  */
 export async function recordSupplierBulkPayment(input: RecordSupplierBulkPaymentInput): Promise<BulkPaymentResult> {
   const amount = new Prisma.Decimal(input.amount);
@@ -223,20 +246,6 @@ export async function recordSupplierBulkPayment(input: RecordSupplierBulkPayment
       where: { supplierId: input.supplierId, status: { not: PaymentStatus.PAID } },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
     });
-
-    const totalOutstanding = outstanding.reduce(
-      (sum, p) => sum.plus(p.totalAmount.minus(p.paidAmount)),
-      new Prisma.Decimal(0)
-    );
-
-    if (outstanding.length === 0) {
-      throw new Error("This supplier has no outstanding balance to pay.");
-    }
-    if (amount.greaterThan(totalOutstanding)) {
-      throw new Error(
-        `Payment of ${amount.toString()} exceeds this supplier's total outstanding balance of ${totalOutstanding.toString()}.`
-      );
-    }
 
     let leftover = amount;
     const invoiceNumbers: string[] = [];
@@ -253,14 +262,37 @@ export async function recordSupplierBulkPayment(input: RecordSupplierBulkPayment
       leftover = leftover.minus(allocation);
     }
 
+    if (leftover.greaterThan(0)) {
+      const advancePayment = await tx.payment.create({
+        data: {
+          direction: PaymentDirection.PAYABLE,
+          supplierId: input.supplierId,
+          amount: leftover,
+          method: input.method,
+          note: input.note || null,
+        },
+      });
+
+      await appendSupplierLedger(tx, {
+        supplierId: input.supplierId,
+        paymentId: advancePayment.id,
+        type: "PAYMENT",
+        amount: leftover.negated(),
+        note: `Advance credit beyond outstanding invoices — auto-adjusts against this supplier's next credit purchase${input.note ? ` (${input.note})` : ""}`,
+      });
+    }
+
     await appendCashLedger(tx, {
       sourceType: "CREDIT_PAYMENT_OUT",
       sourceId: input.supplierId,
       amount: amount.negated(),
-      note: `Bulk payment covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`,
+      note:
+        invoiceNumbers.length > 0
+          ? `Bulk payment covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`
+          : `Advance payment to supplier${input.note ? ` — ${input.note}` : ""}`,
     });
 
-    return { amount: amount.toString(), invoiceNumbers };
+    return { amount: amount.toString(), invoiceNumbers, advanceAmount: leftover.toString() };
   });
 }
 
@@ -276,6 +308,10 @@ export interface RecordCustomerBulkPaymentInput {
  * collection that covers several separate credit sales at once. Allocates
  * the amount across that customer's outstanding sales oldest-due-first,
  * same ordering as the dashboard receivable widget.
+ *
+ * Amount is allowed to exceed the total outstanding (or to be paid with zero
+ * outstanding) — any leftover becomes a standalone advance credit for this
+ * customer (see file header comment).
  */
 export async function recordCustomerBulkPayment(input: RecordCustomerBulkPaymentInput): Promise<BulkPaymentResult> {
   const amount = new Prisma.Decimal(input.amount);
@@ -288,20 +324,6 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
       where: { customerId: input.customerId, status: { not: PaymentStatus.PAID } },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
     });
-
-    const totalOutstanding = outstanding.reduce(
-      (sum, s) => sum.plus(s.totalAmount.minus(s.paidAmount)),
-      new Prisma.Decimal(0)
-    );
-
-    if (outstanding.length === 0) {
-      throw new Error("This customer has no outstanding balance to pay.");
-    }
-    if (amount.greaterThan(totalOutstanding)) {
-      throw new Error(
-        `Payment of ${amount.toString()} exceeds this customer's total outstanding balance of ${totalOutstanding.toString()}.`
-      );
-    }
 
     let leftover = amount;
     const invoiceNumbers: string[] = [];
@@ -318,14 +340,37 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
       leftover = leftover.minus(allocation);
     }
 
+    if (leftover.greaterThan(0)) {
+      const advancePayment = await tx.payment.create({
+        data: {
+          direction: PaymentDirection.RECEIVABLE,
+          customerId: input.customerId,
+          amount: leftover,
+          method: input.method,
+          note: input.note || null,
+        },
+      });
+
+      await appendCustomerLedger(tx, {
+        customerId: input.customerId,
+        paymentId: advancePayment.id,
+        type: "PAYMENT",
+        amount: leftover.negated(),
+        note: `Advance credit beyond outstanding invoices — auto-adjusts against this customer's next credit sale${input.note ? ` (${input.note})` : ""}`,
+      });
+    }
+
     await appendCashLedger(tx, {
       sourceType: "CREDIT_PAYMENT_IN",
       sourceId: input.customerId,
       amount,
-      note: `Bulk payment covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`,
+      note:
+        invoiceNumbers.length > 0
+          ? `Bulk payment covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`
+          : `Advance payment from customer${input.note ? ` — ${input.note}` : ""}`,
     });
 
-    return { amount: amount.toString(), invoiceNumbers };
+    return { amount: amount.toString(), invoiceNumbers, advanceAmount: leftover.toString() };
   });
 }
 
@@ -335,6 +380,10 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
  * Purchase's/Sale's paidAmount (recomputing status), and appends offsetting
  * supplier/customer-ledger and cash-ledger entries — never edits historical
  * rows, so every balance before this point stays correct.
+ *
+ * Also handles a standalone advance payment (purchaseId/saleId both null —
+ * see recordSupplierBulkPayment/recordCustomerBulkPayment): there's no
+ * invoice paidAmount to knock down, just the ledger/cash reversal.
  */
 export async function deletePayment(paymentId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
@@ -344,8 +393,43 @@ export async function deletePayment(paymentId: string): Promise<void> {
     }
 
     if (payment.direction === PaymentDirection.PAYABLE) {
-      if (!payment.purchaseId || !payment.supplierId) {
-        throw new Error("This payment has no purchase/supplier on record — cannot reverse it.");
+      if (!payment.supplierId) {
+        throw new Error("This payment has no supplier on record — cannot reverse it.");
+      }
+
+      if (!payment.purchaseId) {
+        // An advance sits as a pool of future credit rather than being tied
+        // to one invoice, so unlike a per-invoice payment it can't be
+        // reversed once something has drawn it down (e.g. a later credit
+        // purchase auto-applied part of it — see createPurchase's "advance"
+        // comment) — that purchase's paidAmount has no other record backing
+        // it, so undoing the advance out from under it would silently make
+        // that purchase look paid when nothing actually paid for it.
+        const advanceLedgerEntry = await tx.supplierLedgerEntry.findFirst({ where: { paymentId: payment.id } });
+        const latestLedgerEntry = await tx.supplierLedgerEntry.findFirst({
+          where: { supplierId: payment.supplierId },
+          orderBy: { createdAt: "desc" },
+        });
+        if (advanceLedgerEntry && latestLedgerEntry && advanceLedgerEntry.id !== latestLedgerEntry.id) {
+          throw new Error(
+            "This advance credit has already been (at least partly) applied to a later credit purchase — it can no longer be deleted cleanly. Correct that purchase directly instead."
+          );
+        }
+
+        await appendSupplierLedger(tx, {
+          supplierId: payment.supplierId,
+          type: "VOID",
+          amount: payment.amount,
+          note: "Deleted advance payment",
+        });
+        await appendCashLedger(tx, {
+          sourceType: "CREDIT_PAYMENT_OUT",
+          sourceId: payment.id,
+          amount: payment.amount,
+          note: "Deleted advance payment",
+        });
+        await tx.payment.delete({ where: { id: paymentId } });
+        return;
       }
 
       const purchase = await tx.purchase.findUniqueOrThrow({ where: { id: payment.purchaseId } });
@@ -371,8 +455,39 @@ export async function deletePayment(paymentId: string): Promise<void> {
         note: `Deleted payment for ${purchase.invoiceNumber}`,
       });
     } else {
-      if (!payment.saleId || !payment.customerId) {
-        throw new Error("This payment has no sale/customer on record — cannot reverse it.");
+      if (!payment.customerId) {
+        throw new Error("This payment has no customer on record — cannot reverse it.");
+      }
+
+      if (!payment.saleId) {
+        // Same reasoning as the PAYABLE advance branch above: block deletion
+        // once a later credit sale has drawn the advance down, since that
+        // sale's paidAmount would then have no payment record backing it.
+        const advanceLedgerEntry = await tx.customerLedgerEntry.findFirst({ where: { paymentId: payment.id } });
+        const latestLedgerEntry = await tx.customerLedgerEntry.findFirst({
+          where: { customerId: payment.customerId },
+          orderBy: { createdAt: "desc" },
+        });
+        if (advanceLedgerEntry && latestLedgerEntry && advanceLedgerEntry.id !== latestLedgerEntry.id) {
+          throw new Error(
+            "This advance credit has already been (at least partly) applied to a later credit sale — it can no longer be deleted cleanly. Correct that sale directly instead."
+          );
+        }
+
+        await appendCustomerLedger(tx, {
+          customerId: payment.customerId,
+          type: "VOID",
+          amount: payment.amount,
+          note: "Deleted advance payment",
+        });
+        await appendCashLedger(tx, {
+          sourceType: "CREDIT_PAYMENT_IN",
+          sourceId: payment.id,
+          amount: payment.amount.negated(),
+          note: "Deleted advance payment",
+        });
+        await tx.payment.delete({ where: { id: paymentId } });
+        return;
       }
 
       const sale = await tx.sale.findUniqueOrThrow({ where: { id: payment.saleId } });

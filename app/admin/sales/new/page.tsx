@@ -1,14 +1,15 @@
 import { listPhones } from "@/lib/actions/phones";
 import { listAccessories } from "@/lib/actions/accessories";
-import { listCustomers } from "@/lib/actions/customers";
+import { listCustomers, getCustomerBalances } from "@/lib/actions/customers";
 import { PageHeader } from "../../_components/ui";
 import { SaleForm } from "./sale-form";
 
 export default async function NewSalePage() {
-  const [phones, accessories, customers] = await Promise.all([
+  const [phones, accessories, customers, balances] = await Promise.all([
     listPhones({ status: "IN_STOCK" }),
     listAccessories(),
     listCustomers(),
+    getCustomerBalances(),
   ]);
 
   return (
@@ -31,7 +32,12 @@ export default async function NewSalePage() {
           salePrice: a.salePrice.toString(),
           quantity: a.quantity,
         }))}
-        customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone }))}
+        customers={customers.map((c) => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          advanceCredit: Math.max(0, -Number(balances.get(c.id) ?? "0")).toString(),
+        }))}
       />
     </div>
   );

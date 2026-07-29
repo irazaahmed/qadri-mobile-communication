@@ -134,6 +134,29 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
     const dueDate =
       !isCash && input.creditDays ? new Date(now.getTime() + input.creditDays * 86_400_000) : null;
 
+    // Advance credit auto-adjustment (credit-and-ledger skill): if we
+    // overpaid this supplier on a previous bulk settlement, their
+    // SupplierLedgerEntry balance is negative — that negative amount IS our
+    // available advance with them (recordSupplierBulkPayment). Draw it down
+    // against this new CREDIT purchase's total. Only affects the Purchase's
+    // own paidAmount/status (so it doesn't sit as outstanding payable when
+    // it's already covered) — the SupplierLedgerEntry below still logs the
+    // full totalAmount unchanged, since no new cash moves here; the ledger's
+    // own cumulative balanceAfter math is what actually "uses up" the
+    // advance.
+    let advanceApplied = new Prisma.Decimal(0);
+    if (!isCash && supplierId) {
+      const latestLedger = await tx.supplierLedgerEntry.findFirst({
+        where: { supplierId },
+        orderBy: { createdAt: "desc" },
+      });
+      const currentBalance = latestLedger?.balanceAfter ?? new Prisma.Decimal(0);
+      if (currentBalance.isNegative()) {
+        advanceApplied = Prisma.Decimal.min(currentBalance.negated(), totalAmount);
+      }
+    }
+    const effectivePaidAmount = isCash ? totalAmount : advanceApplied;
+
     const purchase = await tx.purchase.create({
       data: {
         invoiceNumber,
@@ -142,8 +165,14 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
         creditDays: isCash ? null : input.creditDays ?? null,
         dueDate,
         totalAmount,
-        paidAmount: isCash ? totalAmount : new Prisma.Decimal(0),
-        status: isCash ? PaymentStatus.PAID : PaymentStatus.UNPAID,
+        paidAmount: effectivePaidAmount,
+        status: isCash
+          ? PaymentStatus.PAID
+          : effectivePaidAmount.greaterThanOrEqualTo(totalAmount)
+            ? PaymentStatus.PAID
+            : effectivePaidAmount.greaterThan(0)
+              ? PaymentStatus.PARTIAL
+              : PaymentStatus.UNPAID,
       },
     });
 
@@ -246,7 +275,11 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
         purchaseId: purchase.id,
         type: "PURCHASE",
         amount: totalAmount,
-        note: `Purchase ${invoiceNumber} (credit, due ${dueDate?.toISOString() ?? "n/a"})`,
+        note: `Purchase ${invoiceNumber} (credit, due ${dueDate?.toISOString() ?? "n/a"})${
+          advanceApplied.greaterThan(0)
+            ? ` — Rs ${advanceApplied.toString()} covered by our existing advance credit with this supplier`
+            : ""
+        }`,
       });
     }
 

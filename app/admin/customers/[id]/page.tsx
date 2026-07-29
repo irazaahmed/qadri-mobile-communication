@@ -28,7 +28,9 @@ export default async function CustomerLedgerPage({ params }: { params: Promise<{
   if (!customer) notFound();
 
   const currentBalance = ledger.length ? ledger[ledger.length - 1].balanceAfter.toString() : "0";
-  const outstandingAmount = Math.max(0, Number(currentBalance));
+  const balanceNum = Number(currentBalance);
+  const outstandingAmount = Math.max(0, balanceNum);
+  const advanceAmount = Math.max(0, -balanceNum);
 
   return (
     <div>
@@ -43,16 +45,29 @@ export default async function CustomerLedgerPage({ params }: { params: Promise<{
       />
 
       <Card className="mb-6 p-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate">Current receivable balance</p>
-        <p className="mt-1 text-2xl font-semibold text-warning">{formatCurrency(currentBalance)}</p>
-        {outstandingAmount > 0 ? (
-          <div className="mt-4 border-t border-slate/10 pt-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate">
-              Record payment — clears oldest outstanding sales first
+        {advanceAmount > 0 ? (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate">
+              Customer&apos;s advance credit (Costumer ka advance credit)
             </p>
-            <CustomerBulkPaymentForm customerId={customer.id} outstanding={outstandingAmount} />
-          </div>
-        ) : null}
+            <p className="mt-1 text-2xl font-semibold text-success">{formatCurrency(String(advanceAmount))}</p>
+            <p className="mt-1 text-xs text-slate">
+              This customer paid more than what was owed — it will be automatically applied to reduce their next
+              credit sale. (Agli credit sale mein khud adjust ho jayega.)
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate">Current receivable balance</p>
+            <p className="mt-1 text-2xl font-semibold text-warning">{formatCurrency(currentBalance)}</p>
+          </>
+        )}
+        <div className="mt-4 border-t border-slate/10 pt-4">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate">
+            Record payment — clears oldest outstanding sales first (Purani se nayi invoice tarteeb mein adjust hoga)
+          </p>
+          <CustomerBulkPaymentForm customerId={customer.id} outstanding={outstandingAmount} />
+        </div>
       </Card>
 
       <div className="mb-3">
