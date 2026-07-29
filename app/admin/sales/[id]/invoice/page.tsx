@@ -38,6 +38,56 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     })
   );
 
+  // Group identical no-IMEI phone lines (a bulk sale — see the "bulk sale"
+  // feature) into one invoice row with a quantity, instead of one row per
+  // physical unit — mirrors how the New Sale form lets them be entered as
+  // one line in the first place. IMEI-tracked phones and accessories always
+  // stay on their own row.
+  type DisplayRow = { key: string; label: string; sub: string; qty: number; rate: string; lineTotal: string };
+  const displayRows: DisplayRow[] = [];
+  const bulkGroups = new Map<string, DisplayRow>();
+  for (const { item, phone, accessory } of items) {
+    if (phone && phone.imei === null) {
+      const key = `${phone.brand}|${phone.model}|${phone.storage ?? ""}|${phone.color ?? ""}|${item.rate.toString()}`;
+      const existing = bulkGroups.get(key);
+      if (existing) {
+        existing.qty += 1;
+        existing.lineTotal = (Number(existing.lineTotal) + Number(item.lineTotal)).toString();
+      } else {
+        const row: DisplayRow = {
+          key,
+          label: `${phone.brand} ${phone.model}${phone.storage ? ` (${phone.storage})` : ""}`,
+          sub: phone.color ?? "",
+          qty: 1,
+          rate: item.rate.toString(),
+          lineTotal: item.lineTotal.toString(),
+        };
+        bulkGroups.set(key, row);
+        displayRows.push(row);
+      }
+    } else if (phone) {
+      displayRows.push({
+        key: item.id,
+        label: `${phone.brand} ${phone.model}${phone.storage ? ` (${phone.storage})` : ""}`,
+        sub: `${phone.color ? `${phone.color} — ` : ""}IMEI ${phone.imei}`,
+        qty: 1,
+        rate: item.rate.toString(),
+        lineTotal: item.lineTotal.toString(),
+      });
+    } else if (accessory) {
+      displayRows.push({
+        key: item.id,
+        label: accessory.name,
+        sub: `${accessory.brand}${accessory.variant ? `, ${accessory.variant}` : ""}`,
+        qty: item.quantity ?? 1,
+        rate: item.rate.toString(),
+        lineTotal: item.lineTotal.toString(),
+      });
+    } else {
+      displayRows.push({ key: item.id, label: "-", sub: "", qty: item.quantity ?? 1, rate: item.rate.toString(), lineTotal: item.lineTotal.toString() });
+    }
+  }
+
   const amountDue = Number(sale.totalAmount) - Number(sale.paidAmount);
   const shareText = `Invoice ${sale.invoiceNumber} from Qadri Mobile Communication — total ${formatCurrency(
     sale.totalAmount.toString()
@@ -94,33 +144,17 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             </tr>
           </thead>
           <tbody>
-            {items.map(({ item, phone, accessory }) => (
-              <tr key={item.id} className="border-b border-gray-200">
+            {displayRows.map((row) => (
+              <tr key={row.key} className="border-b border-gray-200">
                 <td className="py-2">
-                  {phone ? (
-                    <div>
-                      <p className="font-medium">
-                        {phone.brand} {phone.model} {phone.storage ? `(${phone.storage})` : ""}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {phone.color ? `${phone.color} — ` : ""}IMEI {phone.imei ?? "N/A"}
-                      </p>
-                    </div>
-                  ) : accessory ? (
-                    <div>
-                      <p className="font-medium">{accessory.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {accessory.brand}
-                        {accessory.variant ? `, ${accessory.variant}` : ""}
-                      </p>
-                    </div>
-                  ) : (
-                    "-"
-                  )}
+                  <div>
+                    <p className="font-medium">{row.label}</p>
+                    {row.sub ? <p className="text-xs text-gray-500">{row.sub}</p> : null}
+                  </div>
                 </td>
-                <td className="py-2">{item.quantity ?? 1}</td>
-                <td className="py-2 text-right">{formatCurrency(item.rate.toString())}</td>
-                <td className="py-2 text-right">{formatCurrency(item.lineTotal.toString())}</td>
+                <td className="py-2">{row.qty}</td>
+                <td className="py-2 text-right">{formatCurrency(row.rate)}</td>
+                <td className="py-2 text-right">{formatCurrency(row.lineTotal)}</td>
               </tr>
             ))}
           </tbody>

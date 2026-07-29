@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createSaleAction, upsertCustomerAction } from "./actions";
-import { Badge, Button, Card, ErrorBanner, Field, Input } from "../../_components/ui";
+import { Badge, Button, Card, ErrorBanner, Field, Input, Select } from "../../_components/ui";
 import { formatCurrency } from "../../_lib/format";
 
 export interface PhoneOption {
@@ -13,6 +13,15 @@ export interface PhoneOption {
   model: string;
   storage: string | null;
   color: string | null;
+}
+
+export interface BulkPhoneGroupOption {
+  brand: string;
+  model: string;
+  storage: string | null;
+  color: string | null;
+  condition: "NEW" | "USED";
+  count: number;
 }
 
 export interface AccessoryOption {
@@ -42,7 +51,33 @@ type AccessoryLine = {
   rate: string;
   maxQty: number;
 };
-type Line = PhoneLine | AccessoryLine;
+type UnbilledPhoneLine = {
+  key: string;
+  itemType: "PHONE_UNBILLED";
+  imei: string;
+  brand: string;
+  model: string;
+  storage: string;
+  color: string;
+  condition: "NEW" | "USED";
+  warrantyMonths: string;
+  estimatedCost: string;
+  rate: string;
+};
+type BulkPhoneLine = {
+  key: string;
+  itemType: "PHONE_BULK";
+  brand: string;
+  model: string;
+  storage: string | null;
+  color: string | null;
+  condition: "NEW" | "USED";
+  label: string;
+  quantity: string;
+  rate: string;
+  maxQty: number;
+};
+type Line = PhoneLine | AccessoryLine | UnbilledPhoneLine | BulkPhoneLine;
 
 let keyCounter = 0;
 function nextKey() {
@@ -52,16 +87,18 @@ function nextKey() {
 
 function lineTotal(line: Line): number {
   const rate = Number(line.rate) || 0;
-  if (line.itemType === "PHONE") return rate;
+  if (line.itemType === "PHONE" || line.itemType === "PHONE_UNBILLED") return rate;
   return rate * (Number(line.quantity) || 0);
 }
 
 export function SaleForm({
   phones,
+  bulkGroups,
   accessories,
   customers,
 }: {
   phones: PhoneOption[];
+  bulkGroups: BulkPhoneGroupOption[];
   accessories: AccessoryOption[];
   customers: CustomerOption[];
 }) {
@@ -163,6 +200,44 @@ export function SaleForm({
     setAccessorySearch("");
   }
 
+  function addUnbilledPhoneLine() {
+    setLines((prev) => [
+      ...prev,
+      {
+        key: nextKey(),
+        itemType: "PHONE_UNBILLED",
+        imei: "",
+        brand: "",
+        model: "",
+        storage: "",
+        color: "",
+        condition: "NEW",
+        warrantyMonths: "",
+        estimatedCost: "",
+        rate: "",
+      },
+    ]);
+  }
+
+  function addBulkPhoneLine(g: BulkPhoneGroupOption) {
+    setLines((prev) => [
+      ...prev,
+      {
+        key: nextKey(),
+        itemType: "PHONE_BULK",
+        brand: g.brand,
+        model: g.model,
+        storage: g.storage,
+        color: g.color,
+        condition: g.condition,
+        label: `${g.brand} ${g.model} ${g.storage ? `(${g.storage})` : ""} ${g.color || ""}`.trim(),
+        quantity: "1",
+        rate: "",
+        maxQty: g.count,
+      },
+    ]);
+  }
+
   function updateLine(key: string, patch: Partial<Line>) {
     setLines((prev) => prev.map((l) => (l.key === key ? ({ ...l, ...patch } as Line) : l)));
   }
@@ -244,29 +319,62 @@ export function SaleForm({
         setError("Every line needs a valid rate.");
         return;
       }
-      if (line.itemType === "ACCESSORY") {
+      if (line.itemType === "ACCESSORY" || line.itemType === "PHONE_BULK") {
         const qty = Number(line.quantity);
         if (!qty || qty <= 0) {
-          setError("Every accessory line needs a quantity greater than 0.");
+          setError("Every accessory/bulk line needs a quantity greater than 0.");
           return;
         }
         if (qty > line.maxQty) {
-          setError(`Only ${line.maxQty} in stock for one of the accessory lines.`);
+          setError(`Only ${line.maxQty} in stock for one of the bulk/accessory lines.`);
+          return;
+        }
+      }
+      if (line.itemType === "PHONE_UNBILLED") {
+        if (!line.brand.trim() || !line.model.trim()) {
+          setError("Every unbilled phone line needs brand and model.");
+          return;
+        }
+        if (!line.estimatedCost || Number(line.estimatedCost) < 0) {
+          setError("Every unbilled phone line needs a valid estimated cost.");
           return;
         }
       }
     }
 
-    const items = lines.map((line) =>
-      line.itemType === "PHONE"
-        ? { itemType: "PHONE" as const, phoneId: line.phoneId, rate: line.rate }
-        : {
-            itemType: "ACCESSORY" as const,
-            accessoryId: line.accessoryId,
-            quantity: Number(line.quantity),
-            rate: line.rate,
-          }
-    );
+    const items = lines.map((line) => {
+      if (line.itemType === "PHONE") return { itemType: "PHONE" as const, phoneId: line.phoneId, rate: line.rate };
+      if (line.itemType === "PHONE_UNBILLED")
+        return {
+          itemType: "PHONE_UNBILLED" as const,
+          imei: line.imei.trim() || null,
+          brand: line.brand.trim(),
+          model: line.model.trim(),
+          storage: line.storage.trim() || null,
+          color: line.color.trim() || null,
+          condition: line.condition,
+          warrantyMonths: line.warrantyMonths ? Number(line.warrantyMonths) : null,
+          estimatedCost: line.estimatedCost,
+          rate: line.rate,
+        };
+      if (line.itemType === "PHONE_BULK")
+        return {
+          itemType: "PHONE_BULK" as const,
+          brand: line.brand,
+          model: line.model,
+          storage: line.storage,
+          color: line.color,
+          condition: line.condition,
+          quantity: Number(line.quantity),
+          rate: line.rate,
+        };
+      return {
+        itemType: "ACCESSORY" as const,
+        accessoryId: line.accessoryId,
+        quantity: Number(line.quantity),
+        rate: line.rate,
+      };
+    });
 
     startTransition(async () => {
       const result = await createSaleAction({
@@ -508,45 +616,160 @@ export function SaleForm({
         </Card>
       </div>
 
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <Card className="p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-blue">
+            Bulk sale (multiple identical units)
+          </p>
+          <p className="mb-2 text-xs text-slate">
+            Sell several identical no-IMEI units as one line — enter the rate once, quantity multiplies it. (Aik jaisi
+            units ek sath bechain — rate aik hi bar likhein.)
+          </p>
+          {bulkGroups.length === 0 ? (
+            <p className="text-sm text-slate">No bulk (no-IMEI) stock available right now.</p>
+          ) : (
+            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+              {bulkGroups.map((g) => (
+                <button
+                  type="button"
+                  key={`${g.brand}|${g.model}|${g.storage ?? ""}|${g.color ?? ""}|${g.condition}`}
+                  onClick={() => addBulkPhoneLine(g)}
+                  className="flex items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-surface-muted"
+                >
+                  <span>
+                    {g.brand} {g.model} {g.storage ? `(${g.storage})` : ""} {g.color || ""}
+                  </span>
+                  <Badge variant="slate">{g.count} in stock</Badge>
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-warning">
+            Sell item not in stock (bill pending)
+          </p>
+          <p className="mb-2 text-xs text-slate">
+            For a phone a company dropped off before sending the invoice — sell it now on an estimated cost, then
+            reconcile the real cost later from Purchases → Reconcile pending bill. (Jab company bina bill ke phone de
+            jaye — abhi bech den, bill baad mein reconcile karein.)
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={addUnbilledPhoneLine}>
+            + Add unbilled phone line
+          </Button>
+        </Card>
+      </div>
+
       <div className="flex flex-col gap-4">
         {lines.length === 0 ? <p className="text-sm text-slate">No lines added yet.</p> : null}
-        {lines.map((line) => (
-          <Card key={line.key} className="p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={line.itemType === "PHONE" ? "blue" : "slate"}>{line.itemType}</Badge>
-              <span className="flex-1 text-sm">{line.label}</span>
-              {line.itemType === "ACCESSORY" ? (
-                <div className="w-20">
+        {lines.map((line) =>
+          line.itemType === "PHONE_UNBILLED" ? (
+            <Card key={line.key} className="border-warning/30 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <Badge variant="warning">Bill pending</Badge>
+                <button
+                  type="button"
+                  onClick={() => removeLine(line.key)}
+                  className="text-xs text-danger hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Field label="IMEI" hint="Leave blank if unknown.">
+                  <Input value={line.imei} onChange={(e) => updateLine(line.key, { imei: e.target.value })} />
+                </Field>
+                <Field label="Brand *">
+                  <Input value={line.brand} onChange={(e) => updateLine(line.key, { brand: e.target.value })} />
+                </Field>
+                <Field label="Model *">
+                  <Input value={line.model} onChange={(e) => updateLine(line.key, { model: e.target.value })} />
+                </Field>
+                <Field label="Storage">
+                  <Input value={line.storage} onChange={(e) => updateLine(line.key, { storage: e.target.value })} />
+                </Field>
+                <Field label="Color">
+                  <Input value={line.color} onChange={(e) => updateLine(line.key, { color: e.target.value })} />
+                </Field>
+                <Field label="Condition *">
+                  <Select
+                    value={line.condition}
+                    onChange={(e) => updateLine(line.key, { condition: e.target.value as "NEW" | "USED" })}
+                  >
+                    <option value="NEW">New</option>
+                    <option value="USED">Used</option>
+                  </Select>
+                </Field>
+                <Field label="Warranty (months)">
                   <Input
                     type="number"
-                    min={1}
-                    max={line.maxQty}
-                    value={line.quantity}
-                    onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
+                    min={0}
+                    value={line.warrantyMonths}
+                    onChange={(e) => updateLine(line.key, { warrantyMonths: e.target.value })}
+                  />
+                </Field>
+                <Field label="Estimated cost *" hint="Corrected later once the real bill arrives.">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={line.estimatedCost}
+                    onChange={(e) => updateLine(line.key, { estimatedCost: e.target.value })}
+                  />
+                </Field>
+                <Field label="Sale rate *">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={line.rate}
+                    onChange={(e) => updateLine(line.key, { rate: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <p className="mt-2 text-right text-sm font-medium">{formatCurrency(lineTotal(line))}</p>
+            </Card>
+          ) : (
+            <Card key={line.key} className="p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge variant={line.itemType === "PHONE" || line.itemType === "PHONE_BULK" ? "blue" : "slate"}>
+                  {line.itemType === "PHONE_BULK" ? "PHONE (bulk)" : line.itemType}
+                </Badge>
+                <span className="flex-1 text-sm">{line.label}</span>
+                {line.itemType === "ACCESSORY" || line.itemType === "PHONE_BULK" ? (
+                  <div className="w-20">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={line.maxQty}
+                      value={line.quantity}
+                      onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
+                    />
+                  </div>
+                ) : null}
+                <div className="w-28">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="Rate"
+                    value={line.rate}
+                    onChange={(e) => updateLine(line.key, { rate: e.target.value })}
                   />
                 </div>
-              ) : null}
-              <div className="w-28">
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="Rate"
-                  value={line.rate}
-                  onChange={(e) => updateLine(line.key, { rate: e.target.value })}
-                />
+                <span className="w-24 text-right text-sm font-medium">{formatCurrency(lineTotal(line))}</span>
+                <button
+                  type="button"
+                  onClick={() => removeLine(line.key)}
+                  className="text-xs text-danger hover:underline"
+                >
+                  Remove
+                </button>
               </div>
-              <span className="w-24 text-right text-sm font-medium">{formatCurrency(lineTotal(line))}</span>
-              <button
-                type="button"
-                onClick={() => removeLine(line.key)}
-                className="text-xs text-danger hover:underline"
-              >
-                Remove
-              </button>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          )
+        )}
       </div>
 
       <Card className="flex items-center justify-between p-5">

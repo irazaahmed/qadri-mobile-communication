@@ -5,7 +5,15 @@ import { recordCustomerBulkPaymentAction } from "./payment-actions";
 import { Button, ErrorBanner, Field, Input, Select, SuccessBanner } from "../../_components/ui";
 import { formatCurrency } from "../../_lib/format";
 
-export function CustomerBulkPaymentForm({ customerId, outstanding }: { customerId: string; outstanding: number }) {
+export function CustomerBulkPaymentForm({
+  customerId,
+  outstanding,
+  defaultMethod = "CASH",
+}: {
+  customerId: string;
+  outstanding: number;
+  defaultMethod?: "CASH" | "BANK_TRANSFER" | "JAZZCASH" | "EASYPAISA";
+}) {
   const boundAction = recordCustomerBulkPaymentAction.bind(null, customerId);
   const [state, formAction, pending] = useActionState(boundAction, undefined);
 
@@ -21,7 +29,7 @@ export function CustomerBulkPaymentForm({ customerId, outstanding }: { customerI
           <Input name="amount" type="number" step="0.01" min="0.01" className="w-36" required />
         </Field>
         <Field label="Method">
-          <Select name="method" defaultValue="CASH" className="w-40">
+          <Select name="method" defaultValue={defaultMethod} className="w-40">
             <option value="CASH">Cash</option>
             <option value="BANK_TRANSFER">Bank transfer</option>
             <option value="JAZZCASH">JazzCash</option>

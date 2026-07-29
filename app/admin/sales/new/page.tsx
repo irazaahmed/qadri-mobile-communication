@@ -1,12 +1,13 @@
-import { listPhones } from "@/lib/actions/phones";
+import { listPhones, listBulkPhoneGroups } from "@/lib/actions/phones";
 import { listAccessories } from "@/lib/actions/accessories";
 import { listCustomers, getCustomerBalances } from "@/lib/actions/customers";
 import { PageHeader } from "../../_components/ui";
 import { SaleForm } from "./sale-form";
 
 export default async function NewSalePage() {
-  const [phones, accessories, customers, balances] = await Promise.all([
+  const [phones, bulkGroups, accessories, customers, balances] = await Promise.all([
     listPhones({ status: "IN_STOCK" }),
+    listBulkPhoneGroups(),
     listAccessories(),
     listCustomers(),
     getCustomerBalances(),
@@ -24,6 +25,7 @@ export default async function NewSalePage() {
           storage: p.storage,
           color: p.color,
         }))}
+        bulkGroups={bulkGroups}
         accessories={accessories.map((a) => ({
           id: a.id,
           name: a.name,

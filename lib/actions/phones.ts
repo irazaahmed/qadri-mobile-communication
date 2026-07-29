@@ -222,6 +222,45 @@ export async function getPendingBillCount(): Promise<number> {
   return prisma.phone.count({ where: { costPending: true } });
 }
 
+export interface BulkPhoneGroup {
+  brand: string;
+  model: string;
+  storage: string | null;
+  color: string | null;
+  condition: PhoneCondition;
+  count: number;
+}
+
+/**
+ * Groups of identical, no-IMEI, IN_STOCK phones (brand+model+storage+color+
+ * condition) with 2+ units — feeds the New Sale form's "bulk sale" picker,
+ * so several identical units can be sold as one line (one rate, one
+ * quantity) instead of one cart line per physical unit. A single-IMEI unit
+ * is still sold via the normal per-unit picker; nothing here changes that
+ * path.
+ */
+export async function listBulkPhoneGroups(): Promise<BulkPhoneGroup[]> {
+  const phones = await prisma.phone.findMany({
+    where: { status: PhoneStatus.IN_STOCK, imei: null },
+    select: { brand: true, model: true, storage: true, color: true, condition: true },
+  });
+
+  const groups = new Map<string, BulkPhoneGroup>();
+  for (const p of phones) {
+    const key = `${p.brand} ${p.model} ${p.storage ?? ""} ${p.color ?? ""} ${p.condition}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(key, { brand: p.brand, model: p.model, storage: p.storage, color: p.color, condition: p.condition, count: 1 });
+    }
+  }
+
+  return Array.from(groups.values())
+    .filter((g) => g.count >= 2)
+    .sort((a, b) => a.brand.localeCompare(b.brand) || a.model.localeCompare(b.model));
+}
+
 /** Distinct brands present in phone inventory, for the brand quick-filter buttons. */
 export async function getPhoneBrands(): Promise<string[]> {
   const rows = await prisma.phone.findMany({

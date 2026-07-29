@@ -31,6 +31,7 @@ export async function recordCustomerBulkPaymentAction(
     revalidatePath(`/admin/customers/${customerId}`);
     revalidatePath("/admin/sales");
     revalidatePath("/admin");
+    revalidatePath("/admin/bank");
 
     const base =
       result.invoiceNumbers.length === 0

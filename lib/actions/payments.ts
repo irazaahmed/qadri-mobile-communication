@@ -1,12 +1,12 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { appendCashLedger, appendSupplierLedger, appendCustomerLedger } from "@/lib/ledger";
+import { appendCashLedger, appendSupplierLedger, appendCustomerLedger, appendBankLedger } from "@/lib/ledger";
 import {
   Prisma,
   PaymentDirection,
   PaymentStatus,
-  type PaymentMethod,
+  PaymentMethod,
   type Payment,
   type Purchase,
   type Sale,
@@ -53,6 +53,41 @@ import {
  */
 
 type Tx = Prisma.TransactionClient;
+
+function methodLabel(method: PaymentMethod): string {
+  return { CASH: "Cash", BANK_TRANSFER: "Bank transfer", JAZZCASH: "JazzCash", EASYPAISA: "EasyPaisa" }[method];
+}
+
+/**
+ * Routes the physical-money side of a payment to the right ledger: CASH
+ * goes to CashLedgerEntry same as always; BANK_TRANSFER/JAZZCASH/EASYPAISA
+ * all land in the one shared BankLedgerEntry instead (per CLAUDE.md §10,
+ * these settlement methods have no separate wallet ledger of their own —
+ * they're combined with real bank transfers in this one balance). The
+ * supplier/customer ledger entries (payable/receivable) are unaffected by
+ * this — those always fire regardless of how the cash physically moved.
+ */
+async function appendSettlementLedger(
+  tx: Tx,
+  {
+    method,
+    sourceType,
+    sourceId,
+    amount,
+    note,
+  }: { method: PaymentMethod; sourceType: string; sourceId?: string | null; amount: Prisma.Decimal; note: string }
+) {
+  if (method === PaymentMethod.CASH) {
+    return appendCashLedger(tx, { sourceType, sourceId, amount, note });
+  }
+  return appendBankLedger(tx, {
+    type: sourceType,
+    sourceType,
+    sourceId,
+    amount,
+    note: `${note} (via ${methodLabel(method)})`,
+  });
+}
 
 /** Applies part (or all) of a payment to one Purchase. Shared by the single-invoice and bulk paths. */
 async function applyPurchasePayment(
@@ -176,7 +211,8 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
 
       const payment = await applyPurchasePayment(tx, purchase, amount, input.method, input.note ?? null);
 
-      await appendCashLedger(tx, {
+      await appendSettlementLedger(tx, {
+        method: input.method,
         sourceType: "CREDIT_PAYMENT_OUT",
         sourceId: payment.id,
         amount: amount.negated(),
@@ -199,7 +235,8 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
 
     const payment = await applySalePayment(tx, sale, amount, input.method, input.note ?? null);
 
-    await appendCashLedger(tx, {
+    await appendSettlementLedger(tx, {
+      method: input.method,
       sourceType: "CREDIT_PAYMENT_IN",
       sourceId: payment.id,
       amount,
@@ -282,7 +319,8 @@ export async function recordSupplierBulkPayment(input: RecordSupplierBulkPayment
       });
     }
 
-    await appendCashLedger(tx, {
+    await appendSettlementLedger(tx, {
+      method: input.method,
       sourceType: "CREDIT_PAYMENT_OUT",
       sourceId: input.supplierId,
       amount: amount.negated(),
@@ -360,7 +398,8 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
       });
     }
 
-    await appendCashLedger(tx, {
+    await appendSettlementLedger(tx, {
+      method: input.method,
       sourceType: "CREDIT_PAYMENT_IN",
       sourceId: input.customerId,
       amount,
@@ -422,7 +461,8 @@ export async function deletePayment(paymentId: string): Promise<void> {
           amount: payment.amount,
           note: "Deleted advance payment",
         });
-        await appendCashLedger(tx, {
+        await appendSettlementLedger(tx, {
+          method: payment.method,
           sourceType: "CREDIT_PAYMENT_OUT",
           sourceId: payment.id,
           amount: payment.amount,
@@ -448,7 +488,8 @@ export async function deletePayment(paymentId: string): Promise<void> {
         note: `Deleted payment for ${purchase.invoiceNumber}`,
       });
 
-      await appendCashLedger(tx, {
+      await appendSettlementLedger(tx, {
+        method: payment.method,
         sourceType: "CREDIT_PAYMENT_OUT",
         sourceId: payment.id,
         amount: payment.amount,
@@ -480,7 +521,8 @@ export async function deletePayment(paymentId: string): Promise<void> {
           amount: payment.amount,
           note: "Deleted advance payment",
         });
-        await appendCashLedger(tx, {
+        await appendSettlementLedger(tx, {
+          method: payment.method,
           sourceType: "CREDIT_PAYMENT_IN",
           sourceId: payment.id,
           amount: payment.amount.negated(),
@@ -506,7 +548,8 @@ export async function deletePayment(paymentId: string): Promise<void> {
         note: `Deleted payment for ${sale.invoiceNumber}`,
       });
 
-      await appendCashLedger(tx, {
+      await appendSettlementLedger(tx, {
+        method: payment.method,
         sourceType: "CREDIT_PAYMENT_IN",
         sourceId: payment.id,
         amount: payment.amount.negated(),

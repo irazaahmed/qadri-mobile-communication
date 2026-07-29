@@ -31,6 +31,7 @@ export async function recordSupplierBulkPaymentAction(
     revalidatePath(`/admin/suppliers/${supplierId}`);
     revalidatePath("/admin/purchases");
     revalidatePath("/admin");
+    revalidatePath("/admin/bank");
 
     const base =
       result.invoiceNumbers.length === 0

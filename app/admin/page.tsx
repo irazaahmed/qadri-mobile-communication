@@ -9,21 +9,24 @@ import {
   getTodayStats,
   getWarrantyExpiringPhones,
 } from "@/lib/actions/dashboard";
+import { getBankBalance } from "@/lib/actions/bank";
 import { Badge, ButtonLink, Card, EmptyState, PageHeader, tableWrap, table, thClass, tdClass, trHover } from "./_components/ui";
 import { formatCurrency, formatDate, isOverdue } from "./_lib/format";
 
 export default async function DashboardPage() {
-  const [today, todayProfit, cashBalance, lowStock, payables, receivables, totals, warrantyExpiring, pendingBills] = await Promise.all([
-    getTodayStats(),
-    getTodayProfit(),
-    getCashBalance(),
-    getLowStockAccessories(),
-    getOutstandingPayables(8),
-    getOutstandingReceivables(8),
-    getOutstandingTotals(),
-    getWarrantyExpiringPhones(30),
-    getPendingBillPhones(8),
-  ]);
+  const [today, todayProfit, cashBalance, bankBalance, lowStock, payables, receivables, totals, warrantyExpiring, pendingBills] =
+    await Promise.all([
+      getTodayStats(),
+      getTodayProfit(),
+      getCashBalance(),
+      getBankBalance(),
+      getLowStockAccessories(),
+      getOutstandingPayables(8),
+      getOutstandingReceivables(8),
+      getOutstandingTotals(),
+      getWarrantyExpiringPhones(30),
+      getPendingBillPhones(8),
+    ]);
 
   return (
     <div>
@@ -42,11 +45,12 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
         <StatCard label="Today's sales" value={formatCurrency(today.salesTotal)} sub={`${today.salesCount} invoice(s)`} />
         <StatCard label="Today's profit" value={formatCurrency(todayProfit)} sub="Revenue minus cost" accent="blue" />
         <StatCard label="Today's purchases" value={formatCurrency(today.purchasesTotal)} sub={`${today.purchasesCount} invoice(s)`} />
         <StatCard label="Cash balance" value={formatCurrency(cashBalance)} sub="Live shop cash" accent="blue" />
+        <StatCard label="Bank balance" value={formatCurrency(bankBalance)} sub="Bank / JazzCash / EasyPaisa" accent="blue" />
         <StatCard label="Payable to suppliers" value={formatCurrency(totals.totalPayable)} sub="Outstanding" accent="danger" />
         <StatCard label="Receivable from customers" value={formatCurrency(totals.totalReceivable)} sub="Outstanding" accent="warning" />
       </div>

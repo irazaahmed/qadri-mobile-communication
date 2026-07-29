@@ -143,6 +143,64 @@ export async function decrementAccessoryStock(tx: Tx, accessoryId: string, quant
   });
 }
 
+export interface CreateUnbilledSoldPhoneStockInput {
+  imei?: string | null;
+  brand: string;
+  model: string;
+  storage?: string | null;
+  color?: string | null;
+  condition: PhoneCondition;
+  warrantyMonths?: number | null;
+  estimatedCost: Prisma.Decimal | number | string;
+  supplierId?: string | null;
+  soldAt: Date;
+  salePrice: Prisma.Decimal | number | string;
+}
+
+/**
+ * Creates a phone that's being sold before its supplier bill has arrived —
+ * e.g. a company drops off units with no invoice yet, and a customer buys
+ * one the same day. Unlike createPhoneStock, this creates the Phone row AND
+ * marks it SOLD in one step (it was never IN_STOCK — it left with this same
+ * sale), with `costPending: true` so it shows up on the "awaiting supplier
+ * bill" list alongside estimate-priced phones added the normal way.
+ * reconcilePendingBillPurchase later attaches the real invoice and corrects
+ * both costPrice and this sale's costAtSale snapshot.
+ */
+export async function createUnbilledSoldPhoneStock(tx: Tx, input: CreateUnbilledSoldPhoneStockInput) {
+  const imei = input.imei?.trim() ? input.imei.trim() : null;
+
+  if (imei) {
+    const existing = await tx.phone.findUnique({ where: { imei } });
+    if (existing) {
+      throw new Error(`IMEI already exists: ${imei} (already in stock as ${existing.brand} ${existing.model}, status ${existing.status}).`);
+    }
+  }
+
+  const estimatedCost = new Prisma.Decimal(input.estimatedCost);
+
+  const phone = await tx.phone.create({
+    data: {
+      imei,
+      brand: input.brand,
+      model: input.model,
+      storage: input.storage ?? null,
+      color: input.color ?? null,
+      condition: input.condition,
+      warrantyMonths: input.warrantyMonths ?? null,
+      costPrice: estimatedCost,
+      supplierId: input.supplierId ?? null,
+      status: PhoneStatus.SOLD,
+      costPending: true,
+      soldAt: input.soldAt,
+      warrantyStartDate: input.soldAt,
+      salePrice: new Prisma.Decimal(input.salePrice),
+    },
+  });
+
+  return { phone, costAtSale: estimatedCost };
+}
+
 /**
  * Marks a phone SOLD as part of a sale line. Re-checks status is still
  * IN_STOCK inside the transaction and throws otherwise. Sets soldAt and

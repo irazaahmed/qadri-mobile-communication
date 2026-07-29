@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { appendCashLedger, appendCustomerLedger, appendBankLedger } from "@/lib/ledger";
-import { markPhoneSold, decrementAccessoryStock } from "@/lib/stock";
+import { markPhoneSold, decrementAccessoryStock, createUnbilledSoldPhoneStock } from "@/lib/stock";
 import { generateSaleInvoiceNumber } from "@/lib/invoice";
 import {
   Prisma,
@@ -10,6 +10,7 @@ import {
   PaymentStatus,
   PurchaseItemType,
   PhoneStatus,
+  PhoneCondition,
   type Sale,
   type SaleItem,
 } from "@prisma/client";
@@ -40,12 +41,56 @@ import {
  * traceable back to this invoice) — the two never overlap for the same
  * rupee. Whatever isn't covered by paidAmount is still the ordinary credit
  * amountDue, unaffected by how the paid portion was split.
+ *
+ * Unbilled phone line ("PHONE_UNBILLED"): sells a phone that was never
+ * IN_STOCK — e.g. a supplier drops off units with no invoice yet and one is
+ * sold same-day. Creates the Phone row (costPending: true, an admin-entered
+ * estimated cost) and marks it SOLD in the very same transaction as this
+ * sale, instead of requiring a separate trip through Inventory first. Shows
+ * up on the same "awaiting supplier bill" list as any other estimate-priced
+ * phone; reconcilePendingBillPurchase (lib/actions/purchases.ts) later
+ * attaches the real invoice and corrects costPrice + this SaleItem's
+ * costAtSale.
+ *
+ * Bulk phone line ("PHONE_BULK"): sells several identical no-IMEI IN_STOCK
+ * units (same brand/model/storage/color/condition) as one cart line with a
+ * single per-unit rate and a quantity, instead of one line per physical
+ * unit. Fans out into `quantity` separate SaleItems server-side (phoneId is
+ * unique per SaleItem — schema invariant, a PHONE line is always 1 unit),
+ * each snapshotting its own phone's costAtSale individually. The specific
+ * units are picked inside the transaction (oldest first), not by the
+ * client, since any matching unit is fungible.
  */
 
 export interface SalePhoneLineInput {
   itemType: "PHONE";
   phoneId: string; // must be status IN_STOCK at write time
   rate: number | string; // sale price for this unit
+}
+
+export interface SaleUnbilledPhoneLineInput {
+  itemType: "PHONE_UNBILLED";
+  imei?: string | null;
+  brand: string;
+  model: string;
+  storage?: string | null;
+  color?: string | null;
+  condition: PhoneCondition;
+  warrantyMonths?: number | null;
+  supplierId?: string | null;
+  estimatedCost: number | string;
+  rate: number | string; // sale price for this unit
+}
+
+export interface SaleBulkPhoneLineInput {
+  itemType: "PHONE_BULK";
+  brand: string;
+  model: string;
+  storage?: string | null;
+  color?: string | null;
+  condition: PhoneCondition;
+  quantity: number; // how many identical no-IMEI units to sell
+  rate: number | string; // sale price per unit
 }
 
 export interface SaleAccessoryLineInput {
@@ -55,7 +100,11 @@ export interface SaleAccessoryLineInput {
   rate: number | string; // sale price per unit
 }
 
-export type SaleLineInput = SalePhoneLineInput | SaleAccessoryLineInput;
+export type SaleLineInput =
+  | SalePhoneLineInput
+  | SaleUnbilledPhoneLineInput
+  | SaleBulkPhoneLineInput
+  | SaleAccessoryLineInput;
 
 export interface CreateSaleInput {
   /** Optional — a cash sale may have no customer record (walk-in). Required for CREDIT. */
@@ -92,11 +141,18 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
     if (line.itemType === "ACCESSORY" && line.quantity <= 0) {
       throw new Error(`Accessory line ${line.accessoryId} must have quantity > 0.`);
     }
+    if (line.itemType === "PHONE_BULK" && line.quantity <= 0) {
+      throw new Error(`Bulk phone line for "${line.brand} ${line.model}" must have quantity > 0.`);
+    }
+    if (line.itemType === "PHONE_UNBILLED" && (!line.brand.trim() || !line.model.trim())) {
+      throw new Error("Brand and model are required for an unbilled (bill-pending) phone line.");
+    }
   }
 
   const computedLines = input.items.map((line) => {
     const rate = new Prisma.Decimal(line.rate);
-    const lineTotal = line.itemType === "PHONE" ? rate : rate.mul(line.quantity);
+    const lineTotal =
+      line.itemType === "PHONE" || line.itemType === "PHONE_UNBILLED" ? rate : rate.mul(line.quantity);
     return { line, rate, lineTotal };
   });
 
@@ -136,6 +192,31 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
         }
         if (phone.status !== "IN_STOCK") {
           throw new Error(`Phone ${phone.imei ?? phone.id} is not IN_STOCK (current status: ${phone.status}).`);
+        }
+      } else if (line.itemType === "PHONE_UNBILLED") {
+        const imei = line.imei?.trim() ? line.imei.trim() : null;
+        if (imei) {
+          const existing = await tx.phone.findUnique({ where: { imei } });
+          if (existing) {
+            throw new Error(`IMEI already exists: ${imei} (already in stock as ${existing.brand} ${existing.model}).`);
+          }
+        }
+      } else if (line.itemType === "PHONE_BULK") {
+        const available = await tx.phone.count({
+          where: {
+            status: PhoneStatus.IN_STOCK,
+            imei: null,
+            brand: line.brand,
+            model: line.model,
+            storage: line.storage ?? null,
+            color: line.color ?? null,
+            condition: line.condition,
+          },
+        });
+        if (available < line.quantity) {
+          throw new Error(
+            `Only ${available} unit(s) of ${line.brand} ${line.model} left in stock (need ${line.quantity}).`
+          );
         }
       } else {
         const accessory = await tx.accessory.findUnique({ where: { id: line.accessoryId } });
@@ -220,6 +301,66 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
             lineTotal,
           },
         });
+      } else if (line.itemType === "PHONE_UNBILLED") {
+        const { phone, costAtSale } = await createUnbilledSoldPhoneStock(tx, {
+          imei: line.imei,
+          brand: line.brand,
+          model: line.model,
+          storage: line.storage,
+          color: line.color,
+          condition: line.condition,
+          warrantyMonths: line.warrantyMonths,
+          estimatedCost: line.estimatedCost,
+          supplierId: line.supplierId,
+          soldAt: now,
+          salePrice: rate,
+        });
+        itemDescriptions.push(`${phone.brand} ${phone.model}${phone.imei ? ` (${phone.imei})` : ""} (bill pending)`);
+
+        await tx.saleItem.create({
+          data: {
+            saleId: sale.id,
+            itemType: PurchaseItemType.PHONE,
+            phoneId: phone.id,
+            rate,
+            costAtSale,
+            lineTotal,
+          },
+        });
+      } else if (line.itemType === "PHONE_BULK") {
+        const candidates = await tx.phone.findMany({
+          where: {
+            status: PhoneStatus.IN_STOCK,
+            imei: null,
+            brand: line.brand,
+            model: line.model,
+            storage: line.storage ?? null,
+            color: line.color ?? null,
+            condition: line.condition,
+          },
+          orderBy: { createdAt: "asc" },
+          take: line.quantity,
+        });
+        if (candidates.length < line.quantity) {
+          throw new Error(
+            `Only ${candidates.length} unit(s) of ${line.brand} ${line.model} left in stock (need ${line.quantity}).`
+          );
+        }
+
+        for (const candidate of candidates) {
+          const { costAtSale } = await markPhoneSold(tx, candidate.id, now, rate);
+          await tx.saleItem.create({
+            data: {
+              saleId: sale.id,
+              itemType: PurchaseItemType.PHONE,
+              phoneId: candidate.id,
+              rate,
+              costAtSale,
+              lineTotal: rate,
+            },
+          });
+        }
+        itemDescriptions.push(`${line.brand} ${line.model} x${line.quantity}`);
       } else {
         const accessory = await decrementAccessoryStock(tx, line.accessoryId, line.quantity);
         itemDescriptions.push(`${accessory.name} x${line.quantity}`);

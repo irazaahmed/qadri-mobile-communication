@@ -22,6 +22,7 @@ export async function recordPurchasePaymentAction(
     revalidatePath("/admin/purchases");
     revalidatePath("/admin");
     revalidatePath("/admin/suppliers");
+    revalidatePath("/admin/bank");
     return { id: payment.id };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record payment." };
@@ -41,6 +42,7 @@ export async function deletePurchasePaymentAction(
   revalidatePath("/admin/purchases");
   revalidatePath("/admin/suppliers");
   revalidatePath("/admin");
+  revalidatePath("/admin/bank");
 }
 
 export async function deletePurchaseAction(purchaseId: string): Promise<{ error: string } | void> {

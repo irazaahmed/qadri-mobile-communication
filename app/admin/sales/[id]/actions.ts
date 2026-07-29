@@ -22,6 +22,7 @@ export async function recordSalePaymentAction(
     revalidatePath("/admin/sales");
     revalidatePath("/admin");
     revalidatePath("/admin/customers");
+    revalidatePath("/admin/bank");
     return { id: payment.id };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record payment." };
@@ -38,6 +39,7 @@ export async function deleteSalePaymentAction(paymentId: string, saleId: string)
   revalidatePath("/admin/sales");
   revalidatePath("/admin/customers");
   revalidatePath("/admin");
+  revalidatePath("/admin/bank");
 }
 
 export async function deleteSaleAction(saleId: string): Promise<{ error: string } | void> {
