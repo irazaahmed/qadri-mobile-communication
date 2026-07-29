@@ -167,10 +167,22 @@ export async function refundClaim(claimId: string, input: RefundClaimInput): Pro
   }
 
   return prisma.$transaction(async (tx) => {
-    const claim = await tx.claim.findUniqueOrThrow({ where: { id: claimId } });
+    const claim = await tx.claim.findUniqueOrThrow({
+      where: { id: claimId },
+      include: { phone: true, accessory: true },
+    });
 
     if (TERMINAL_STATES.has(claim.status)) {
       throw new Error(`Claim ${claim.claimNumber} is already ${claim.status} — cannot refund.`);
+    }
+
+    // Practical ceiling — the item's own sale value — catches a fat-finger
+    // typo (e.g. an extra zero) before it becomes a real cash-ledger entry.
+    const maxRefund = claim.phone
+      ? claim.phone.salePrice ?? new Prisma.Decimal(0)
+      : (claim.accessory?.salePrice ?? new Prisma.Decimal(0)).times(claim.quantity ?? 1);
+    if (maxRefund.greaterThan(0) && amount.greaterThan(maxRefund)) {
+      throw new Error(`Refund of ${amount.toString()} exceeds this item's sale value of ${maxRefund.toString()}.`);
     }
 
     const updated = await tx.claim.update({
@@ -245,14 +257,22 @@ export async function rejectClaim(claimId: string, input: RejectClaimInput): Pro
 
 /**
  * Deletes a claim entered by mistake (wrong item/customer/reason) and
- * reverses everything it did: the phone it's for goes back to SOLD — its
- * pre-claim state, since a claim can only ever be opened against a sold
- * phone — and if it had already been REFUNDED, that refund's exact
- * customer-ledger and cash-ledger effect (looked up from the ledger rows
- * themselves, the source of truth, not the free-text resolution note) is
- * reversed with a new offsetting entry rather than by touching history.
- * Accessory claims never touch stock (only cash/ledger on refund), so
- * there's nothing to reverse there beyond the same ledger offset.
+ * reverses everything it did: if it had already been REFUNDED, that
+ * refund's exact customer-ledger and cash-ledger effect (looked up from the
+ * ledger rows themselves, the source of truth, not the free-text resolution
+ * note) is reversed with a new offsetting entry rather than by touching
+ * history. Accessory claims never touch stock (only cash/ledger on
+ * refund), so there's nothing to reverse there beyond the same ledger
+ * offset.
+ *
+ * The phone's status is only forced back to SOLD when it's currently
+ * CLAIMED (i.e. still mid-lifecycle, physically in hand) — its pre-claim
+ * state. If it's WITH_SUPPLIER, the shop doesn't have the unit yet, so the
+ * status is left alone (same caveat refundClaim/rejectClaim already apply).
+ * If it's already IN_STOCK (a REFUNDED claim put it back on the shelf) it's
+ * genuinely sellable now with no sale behind it — forcing SOLD here would
+ * make a real in-stock phone invisible to the Phones list while the money
+ * was already refunded, which is exactly the bug this guard prevents.
  */
 export async function deleteClaim(claimId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
@@ -289,7 +309,10 @@ export async function deleteClaim(claimId: string): Promise<void> {
     }
 
     if (claim.itemType === "PHONE" && claim.phoneId) {
-      await tx.phone.update({ where: { id: claim.phoneId }, data: { status: PhoneStatus.SOLD } });
+      const phone = await tx.phone.findUniqueOrThrow({ where: { id: claim.phoneId } });
+      if (phone.status === PhoneStatus.CLAIMED) {
+        await tx.phone.update({ where: { id: claim.phoneId }, data: { status: PhoneStatus.SOLD } });
+      }
     }
 
     await tx.claim.delete({ where: { id: claimId } });

@@ -161,7 +161,7 @@ export async function createSale(input: CreateSaleInput): Promise<SaleWithItems>
     new Prisma.Decimal(0)
   );
 
-  let paidAmount = isCash ? totalAmount : new Prisma.Decimal(input.paidAmount ?? 0);
+  const paidAmount = isCash ? totalAmount : new Prisma.Decimal(input.paidAmount ?? 0);
 
   if (!isCash) {
     if (paidAmount.isNegative()) {

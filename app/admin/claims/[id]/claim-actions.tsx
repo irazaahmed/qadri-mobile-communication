@@ -105,8 +105,16 @@ export function ClaimActions({
             </Button>
           ) : (
             <div className="flex flex-wrap items-end gap-3">
-              <Field label="Refund amount">
-                <Input type="number" min="0" step="0.01" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} className="w-32" />
+              <Field label="Refund amount" hint={outstandingMax > 0 ? `Up to ${outstandingMax} (this item's sale value).` : undefined}>
+                <Input
+                  type="number"
+                  min="0"
+                  max={outstandingMax > 0 ? outstandingMax : undefined}
+                  step="0.01"
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(e.target.value)}
+                  className="w-32"
+                />
               </Field>
               <Button type="button" variant="danger" size="sm" disabled={pending} onClick={() => run(() => refundClaimAction(claimId, refundAmount))}>
                 Confirm refund

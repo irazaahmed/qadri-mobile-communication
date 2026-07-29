@@ -150,9 +150,14 @@ model Phone {
 
   supplierId        String?
   supplier          Supplier?      @relation(fields: [supplierId], references: [id])
+  // A physical phone can be purchased only once (from a supplier), but sold
+  // and claimed multiple times over its life if it's ever refunded and
+  // resold — so unlike purchaseItem (genuinely 1:1), these are lists; code
+  // that needs "the current one" orders by createdAt desc and takes the
+  // first.
   purchaseItem      PurchaseItem?
-  saleItem          SaleItem?
-  claim             Claim?
+  saleItems         SaleItem[]
+  claims            Claim[]
 
   createdAt         DateTime       @default(now())
   soldAt            DateTime?
@@ -244,7 +249,11 @@ model SaleItem {
   sale        Sale             @relation(fields: [saleId], references: [id])
   itemType    PurchaseItemType
 
-  phoneId     String?          @unique
+  // Not unique — a phone can legitimately be sold more than once over its
+  // life (sold, refunded/returned, resold), so this is a plain FK, not a
+  // 1:1. Code needing "the current sale" for a phone orders by createdAt
+  // desc and takes the first (see Phone.saleItems).
+  phoneId     String?
   phone       Phone?           @relation(fields: [phoneId], references: [id])
 
   accessoryId String?
@@ -256,6 +265,7 @@ model SaleItem {
   lineTotal   Decimal          @db.Decimal(12, 2)
 
   @@index([saleId])
+  @@index([phoneId])
 }
 
 // ---------- Payments ----------
@@ -286,7 +296,12 @@ model Claim {
   customer               Customer         @relation(fields: [customerId], references: [id])
 
   itemType               PurchaseItemType
-  phoneId                String?          @unique
+  // Not unique — the same physical phone can be claimed more than once over
+  // its life (e.g. a second, unrelated fault after being resold following an
+  // earlier resolved claim), so this is a plain FK, not a 1:1. createClaim's
+  // own guard (phone.status must be SOLD) already prevents overlapping
+  // active claims on the same phone.
+  phoneId                String?
   phone                  Phone?           @relation(fields: [phoneId], references: [id])
   accessoryId            String?
   accessory              Accessory?       @relation(fields: [accessoryId], references: [id])
@@ -305,6 +320,8 @@ model Claim {
 
   resolutionNote         String?
   createdAt              DateTime         @default(now())
+
+  @@index([phoneId])
 }
 
 // ---------- Cash Ledger & Expenses ----------

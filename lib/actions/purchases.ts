@@ -252,7 +252,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
           imei && quantity === 1
             ? await tx.phone.findMany({
                 where: { imei, costPending: true, purchaseItem: null },
-                include: { saleItem: true },
+                include: { saleItems: { orderBy: { sale: { createdAt: "desc" } }, take: 1 } },
               })
             : await tx.phone.findMany({
                 where: {
@@ -262,7 +262,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
                   model: line.model,
                   condition: line.condition,
                 },
-                include: { saleItem: true },
+                include: { saleItems: { orderBy: { sale: { createdAt: "desc" } }, take: 1 } },
                 orderBy: { createdAt: "asc" },
                 take: quantity,
               });
@@ -275,8 +275,11 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
             data: { costPrice: rate, costPending: false, ...(supplierId ? { supplierId } : {}) },
           });
 
-          if (pending.saleItem) {
-            await tx.saleItem.update({ where: { id: pending.saleItem.id }, data: { costAtSale: rate } });
+          // Only the phone's current (latest) sale needs its estimate
+          // corrected — a phone that was sold, refunded, and resold could
+          // have an older, already-settled SaleItem too.
+          if (pending.saleItems[0]) {
+            await tx.saleItem.update({ where: { id: pending.saleItems[0].id }, data: { costAtSale: rate } });
           }
 
           await tx.purchaseItem.create({
@@ -515,7 +518,7 @@ export async function reconcilePendingBillPurchase(input: ReconcilePendingBillIn
     for (const { phoneId, rate } of computed) {
       const phone = await tx.phone.findUnique({
         where: { id: phoneId },
-        include: { purchaseItem: true, saleItem: true },
+        include: { purchaseItem: true, saleItems: { orderBy: { sale: { createdAt: "desc" } }, take: 1 } },
       });
       if (!phone) {
         throw new Error(`Phone ${phoneId} not found.`);
@@ -542,8 +545,8 @@ export async function reconcilePendingBillPurchase(input: ReconcilePendingBillIn
         data: { costPrice: rate, costPending: false, supplierId: input.supplierId },
       });
 
-      if (phone.saleItem) {
-        await tx.saleItem.update({ where: { id: phone.saleItem.id }, data: { costAtSale: rate } });
+      if (phone.saleItems[0]) {
+        await tx.saleItem.update({ where: { id: phone.saleItems[0].id }, data: { costAtSale: rate } });
       }
     }
 

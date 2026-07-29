@@ -89,7 +89,9 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
           confirmPhrase={claim.claimNumber}
           title={`Delete ${claim.claimNumber}?`}
           consequences={[
-            claim.phone ? "Puts the phone back to SOLD (undoes any claim-driven status change)." : "No stock effect for accessory claims.",
+            claim.phone
+              ? "Puts the phone back to SOLD only if it's currently CLAIMED — leaves it alone if it's already IN_STOCK (refunded) or WITH_SUPPLIER."
+              : "No stock effect for accessory claims.",
             claim.status === "REFUNDED"
               ? "Reverses the refund already paid out to the customer."
               : "No refund to reverse yet.",
