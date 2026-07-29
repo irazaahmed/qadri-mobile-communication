@@ -7,6 +7,7 @@ import {
   PaymentDirection,
   PaymentStatus,
   PaymentMethod,
+  PaymentType,
   type Payment,
   type Purchase,
   type Sale,
@@ -473,6 +474,21 @@ export async function deletePayment(paymentId: string): Promise<void> {
       }
 
       const purchase = await tx.purchase.findUniqueOrThrow({ where: { id: payment.purchaseId } });
+
+      // A CASH purchase's Payment row(s) are created at the same moment as
+      // the purchase itself, purely for the supplier's audit trail (see
+      // createPurchase) — their cash/bank effect is the single movement
+      // deletePurchase's own reversal covers, so they aren't independently
+      // reversible here (doing so would double-reverse once the purchase is
+      // later deleted too). A reconciliation purchase is the one exception —
+      // it can never be deleted itself, so undoing its settlement payment
+      // here is the only way to correct a wrongly-marked "already paid".
+      if (purchase.paymentType === PaymentType.CASH && !purchase.isReconciliation) {
+        throw new Error(
+          `${purchase.invoiceNumber} was settled in cash/bank at the time of purchase — its payment record can't be deleted on its own. Delete the whole purchase from its detail page instead if it was entered by mistake.`
+        );
+      }
+
       const newPaidAmount = purchase.paidAmount.minus(payment.amount);
 
       await tx.purchase.update({

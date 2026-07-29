@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { appendCashLedger, appendSupplierLedger } from "@/lib/ledger";
+import { appendCashLedger, appendSupplierLedger, appendBankLedger } from "@/lib/ledger";
 import { createPhoneStock, upsertAccessoryStock } from "@/lib/stock";
 import { generatePurchaseInvoiceNumber } from "@/lib/invoice";
 import {
@@ -32,14 +32,28 @@ import {
  * Cash vs credit:
  * - CASH: if a supplier was picked, SupplierLedgerEntry(PURCHASE, +total)
  *   then a matching SupplierLedgerEntry(PAYMENT, -total) — net payable
- *   effect zero, logged for a clean history — backed by a real Payment row
- *   (direction PAYABLE). If no supplier, skip both ledger entries and the
- *   Payment row (nothing to track them against). Either way,
- *   CashLedgerEntry(-total, sourceType "PURCHASE") always fires — cash left
- *   the shop regardless of whether a supplier was named.
+ *   effect zero, logged for a clean history — backed by real Payment row(s)
+ *   (direction PAYABLE, one per method actually used — see split payment
+ *   below). If no supplier, skip both ledger entries and any Payment rows
+ *   (nothing to track them against). Either way, the cash/bank amount always
+ *   leaves the shop regardless of whether a supplier was named.
  * - CREDIT: requires a supplierId. dueDate = createdAt + creditDays,
- *   SupplierLedgerEntry(PURCHASE, +total) only (running payable increases).
- *   No CashLedgerEntry — no cash has moved yet.
+ *   SupplierLedgerEntry(PURCHASE, +amountDue) where amountDue = totalAmount
+ *   minus whatever was paid upfront (may be 0).
+ *
+ * Split payment (cash / bank transfer / credit, all in one purchase):
+ * `paidAmount` is "how much is paid right now" (cash + bank combined; always
+ * totalAmount for CASH, admin-entered and may be 0 for CREDIT); `bankAmount`
+ * is the slice of that which actually went out via bank transfer rather
+ * than the cash drawer. The bank slice writes to BankLedgerEntry instead of
+ * CashLedgerEntry (sourceType "PURCHASE", traceable back to this invoice)
+ * regardless of payment type. For a CASH purchase with a supplier, the
+ * settlement Payment row(s) created here (one per method actually used)
+ * exist purely for that supplier's own audit trail — they aren't
+ * independently reversible via deletePayment (see its purchase-settlement
+ * guard), since their cash/bank effect is the same single movement that
+ * deletePurchase itself reverses; deleting the whole purchase is the only
+ * way to undo a cash purchase.
  */
 
 export interface PurchasePhoneLineInput {
@@ -78,6 +92,10 @@ export interface CreatePurchaseInput {
   paymentType: PaymentType;
   /** Required (and used) only when paymentType === "CREDIT". */
   creditDays?: number | null;
+  /** Amount paid right now (cash + bank combined). For CASH this is always totalAmount; for CREDIT it may be 0. */
+  paidAmount?: number | string;
+  /** Slice of `paidAmount` paid via bank transfer rather than the cash drawer — must be between 0 and paidAmount. Defaults to 0 (fully cash). */
+  bankAmount?: number | string;
   items: PurchaseLineInput[];
 }
 
@@ -126,10 +144,30 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
     new Prisma.Decimal(0)
   );
 
+  const isCash = input.paymentType === PaymentType.CASH;
+  const paidAmount = isCash ? totalAmount : new Prisma.Decimal(input.paidAmount ?? 0);
+
+  if (!isCash) {
+    if (paidAmount.isNegative()) {
+      throw new Error("paidAmount cannot be negative.");
+    }
+    if (paidAmount.greaterThan(totalAmount)) {
+      throw new Error("paidAmount cannot exceed the purchase's totalAmount.");
+    }
+  }
+
+  const bankAmount = new Prisma.Decimal(input.bankAmount ?? 0);
+  if (bankAmount.isNegative()) {
+    throw new Error("bankAmount cannot be negative.");
+  }
+  if (bankAmount.greaterThan(paidAmount)) {
+    throw new Error("bankAmount cannot exceed paidAmount (the amount paid right now).");
+  }
+  const cashAmount = paidAmount.minus(bankAmount);
+
   return prisma.$transaction(async (tx) => {
     const invoiceNumber = await generatePurchaseInvoiceNumber(tx);
     const now = new Date();
-    const isCash = input.paymentType === PaymentType.CASH;
     const supplierId = input.supplierId || null;
     const dueDate =
       !isCash && input.creditDays ? new Date(now.getTime() + input.creditDays * 86_400_000) : null;
@@ -138,12 +176,13 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
     // overpaid this supplier on a previous bulk settlement, their
     // SupplierLedgerEntry balance is negative — that negative amount IS our
     // available advance with them (recordSupplierBulkPayment). Draw it down
-    // against this new CREDIT purchase's total. Only affects the Purchase's
-    // own paidAmount/status (so it doesn't sit as outstanding payable when
-    // it's already covered) — the SupplierLedgerEntry below still logs the
-    // full totalAmount unchanged, since no new cash moves here; the ledger's
-    // own cumulative balanceAfter math is what actually "uses up" the
-    // advance.
+    // against whatever's still due on this new CREDIT purchase after
+    // `paidAmount` (today's upfront cash/bank, if any). Only affects the
+    // Purchase's own paidAmount/status (so it doesn't sit as outstanding
+    // payable when it's already covered) — the SupplierLedgerEntry below
+    // still logs the actual amountDue unchanged, since no new cash moves for
+    // the advance-covered portion; the ledger's own cumulative balanceAfter
+    // math is what actually "uses up" the advance.
     let advanceApplied = new Prisma.Decimal(0);
     if (!isCash && supplierId) {
       const latestLedger = await tx.supplierLedgerEntry.findFirst({
@@ -152,10 +191,14 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
       });
       const currentBalance = latestLedger?.balanceAfter ?? new Prisma.Decimal(0);
       if (currentBalance.isNegative()) {
-        advanceApplied = Prisma.Decimal.min(currentBalance.negated(), totalAmount);
+        const advanceAvailable = currentBalance.negated();
+        const stillDue = totalAmount.minus(paidAmount);
+        if (stillDue.greaterThan(0)) {
+          advanceApplied = Prisma.Decimal.min(advanceAvailable, stillDue);
+        }
       }
     }
-    const effectivePaidAmount = isCash ? totalAmount : advanceApplied;
+    const effectivePaidAmount = isCash ? totalAmount : paidAmount.plus(advanceApplied);
 
     const purchase = await tx.purchase.create({
       data: {
@@ -300,19 +343,23 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
       await tx.purchase.update({ where: { id: purchase.id }, data: { isReconciliation: true } });
     }
 
+    // Bank-transfer portion of the amount paid right now writes directly to
+    // BankLedgerEntry instead of CashLedgerEntry — see the bankAmount doc
+    // comment on CreatePurchaseInput. Applies the same way for a CASH
+    // purchase (fully paid) or a CREDIT purchase (partly paid now, rest due
+    // later).
+    if (bankAmount.greaterThan(0)) {
+      await appendBankLedger(tx, {
+        type: "PURCHASE",
+        sourceType: "PURCHASE",
+        sourceId: purchase.id,
+        amount: bankAmount.negated(),
+        note: `Purchase ${invoiceNumber} — Rs ${bankAmount.toString()} paid via bank transfer`,
+      });
+    }
+
     if (isCash) {
       if (supplierId) {
-        const payment = await tx.payment.create({
-          data: {
-            direction: PaymentDirection.PAYABLE,
-            supplierId,
-            purchaseId: purchase.id,
-            amount: totalAmount,
-            method: PaymentMethod.CASH,
-            note: `Immediate cash settlement for purchase ${invoiceNumber}`,
-          },
-        });
-
         await appendSupplierLedger(tx, {
           supplierId,
           purchaseId: purchase.id,
@@ -321,35 +368,81 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
           note: `Purchase ${invoiceNumber}`,
         });
 
-        await appendSupplierLedger(tx, {
-          supplierId,
-          purchaseId: purchase.id,
-          paymentId: payment.id,
-          type: "PAYMENT",
-          amount: totalAmount.negated(),
-          note: `Cash payment for purchase ${invoiceNumber}`,
-        });
+        if (cashAmount.greaterThan(0)) {
+          const cashPayment = await tx.payment.create({
+            data: {
+              direction: PaymentDirection.PAYABLE,
+              supplierId,
+              purchaseId: purchase.id,
+              amount: cashAmount,
+              method: PaymentMethod.CASH,
+              note: `Immediate cash settlement for purchase ${invoiceNumber}`,
+            },
+          });
+          await appendSupplierLedger(tx, {
+            supplierId,
+            purchaseId: purchase.id,
+            paymentId: cashPayment.id,
+            type: "PAYMENT",
+            amount: cashAmount.negated(),
+            note: `Cash payment for purchase ${invoiceNumber}`,
+          });
+        }
+
+        if (bankAmount.greaterThan(0)) {
+          const bankPayment = await tx.payment.create({
+            data: {
+              direction: PaymentDirection.PAYABLE,
+              supplierId,
+              purchaseId: purchase.id,
+              amount: bankAmount,
+              method: PaymentMethod.BANK_TRANSFER,
+              note: `Immediate bank transfer settlement for purchase ${invoiceNumber}`,
+            },
+          });
+          await appendSupplierLedger(tx, {
+            supplierId,
+            purchaseId: purchase.id,
+            paymentId: bankPayment.id,
+            type: "PAYMENT",
+            amount: bankAmount.negated(),
+            note: `Bank transfer payment for purchase ${invoiceNumber}`,
+          });
+        }
       }
 
-      await appendCashLedger(tx, {
-        sourceType: "PURCHASE",
-        sourceId: purchase.id,
-        amount: totalAmount.negated(),
-        note: `Purchase ${invoiceNumber}`,
-      });
+      if (cashAmount.greaterThan(0)) {
+        await appendCashLedger(tx, {
+          sourceType: "PURCHASE",
+          sourceId: purchase.id,
+          amount: cashAmount.negated(),
+          note: `Purchase ${invoiceNumber}`,
+        });
+      }
     } else {
+      const amountDue = totalAmount.minus(paidAmount);
+
       // Validated above: CREDIT always has a supplierId.
       await appendSupplierLedger(tx, {
         supplierId: supplierId!,
         purchaseId: purchase.id,
         type: "PURCHASE",
-        amount: totalAmount,
+        amount: amountDue,
         note: `Purchase ${invoiceNumber} (credit, due ${dueDate?.toISOString() ?? "n/a"})${
           advanceApplied.greaterThan(0)
             ? ` — Rs ${advanceApplied.toString()} covered by our existing advance credit with this supplier`
             : ""
         }`,
       });
+
+      if (cashAmount.greaterThan(0)) {
+        await appendCashLedger(tx, {
+          sourceType: "PURCHASE",
+          sourceId: purchase.id,
+          amount: cashAmount.negated(),
+          note: `Purchase ${invoiceNumber} — upfront payment`,
+        });
+      }
     }
 
     return tx.purchase.findUniqueOrThrow({
@@ -533,14 +626,20 @@ export async function getPurchaseById(id: string): Promise<PurchaseWithItems | n
  * phones it added to stock (if still IN_STOCK — deleted outright, they never
  * had independent history), accessory quantity it added (decremented back —
  * blocked if some has already been sold elsewhere, since that stock is no
- * longer this invoice's to take back), and the supplier/cash ledger effect
- * it logged (reversed via a new offsetting entry, never by editing history,
- * so every other supplier's/day's running balance stays intact).
+ * longer this invoice's to take back), and the supplier/cash/bank ledger
+ * effect it logged (reversed via a new offsetting entry, never by editing
+ * history, so every other supplier's/day's running balance stays intact).
  *
- * Blocked entirely if any Payment has been recorded against this purchase —
- * those must be deleted first (`deletePayment`) so the payable balance this
- * invoice contributed is fully and correctly unwound before the invoice
- * itself disappears.
+ * A CASH purchase's own settlement Payment row(s) (created at the same time
+ * as the purchase, for the supplier's audit trail) are deleted here directly
+ * rather than via `deletePayment` — they aren't independently reversible
+ * (see deletePayment's purchase-settlement guard), since deletePurchase's
+ * own cash/bank reversal below already covers that exact money movement.
+ *
+ * Only blocked on outstanding Payment rows for a CREDIT purchase — those are
+ * real, later, independent settlements against the payable and must be
+ * deleted first (`deletePayment`) so the balance they contributed is fully
+ * and correctly unwound before the invoice itself disappears.
  */
 export async function deletePurchase(purchaseId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
@@ -557,11 +656,13 @@ export async function deletePurchase(purchaseId: string): Promise<void> {
       );
     }
 
-    const paymentCount = await tx.payment.count({ where: { purchaseId } });
-    if (paymentCount > 0) {
-      throw new Error(
-        `${purchase.invoiceNumber} has payments recorded against it — delete those payments first.`
-      );
+    if (purchase.paymentType === PaymentType.CREDIT) {
+      const paymentCount = await tx.payment.count({ where: { purchaseId } });
+      if (paymentCount > 0) {
+        throw new Error(
+          `${purchase.invoiceNumber} has payments recorded against it — delete those payments first.`
+        );
+      }
     }
 
     const phoneIds: string[] = [];
@@ -600,28 +701,56 @@ export async function deletePurchase(purchaseId: string): Promise<void> {
 
     // Reverse the money side with offsetting entries — never by touching
     // historical rows, so every balanceAfter chain before this point stays
-    // correct.
-    if (purchase.supplierId) {
-      if (purchase.paymentType === PaymentType.CREDIT) {
-        await appendSupplierLedger(tx, {
-          supplierId: purchase.supplierId,
-          type: "VOID",
-          amount: purchase.totalAmount.negated(),
-          note: `Deleted purchase ${purchase.invoiceNumber}`,
-        });
-      }
-      // CASH purchases with a supplier already net to zero on the supplier
-      // ledger (matching PURCHASE/PAYMENT pair) — nothing to reverse there.
-    }
-
-    if (purchase.paymentType === PaymentType.CASH) {
-      await appendCashLedger(tx, {
-        sourceType: "PURCHASE",
-        sourceId: purchase.id,
-        amount: purchase.totalAmount,
+    // correct. Reverse exactly what was actually logged at creation (looked
+    // up by sourceId/purchaseId), not a recomputation from
+    // purchase.paidAmount/totalAmount — those can diverge from what was
+    // really logged, since advance-credit auto-adjustment can inflate
+    // purchase.paidAmount without a new CashLedgerEntry.
+    if (purchase.supplierId && purchase.paymentType === PaymentType.CREDIT) {
+      const originalPurchaseEntry = await tx.supplierLedgerEntry.findFirst({
+        where: { purchaseId: purchase.id, type: "PURCHASE" },
+      });
+      const amountToReverse = originalPurchaseEntry?.amount ?? purchase.totalAmount.minus(purchase.paidAmount);
+      await appendSupplierLedger(tx, {
+        supplierId: purchase.supplierId,
+        type: "VOID",
+        amount: amountToReverse.negated(),
         note: `Deleted purchase ${purchase.invoiceNumber}`,
       });
     }
+    // CASH purchases with a supplier already net to zero on the supplier
+    // ledger (matching PURCHASE/PAYMENT pair) — nothing to reverse there.
+
+    const originalCashEntry = await tx.cashLedgerEntry.findFirst({
+      where: { sourceType: "PURCHASE", sourceId: purchase.id },
+    });
+    if (originalCashEntry) {
+      await appendCashLedger(tx, {
+        sourceType: "PURCHASE",
+        sourceId: purchase.id,
+        amount: originalCashEntry.amount.negated(),
+        note: `Deleted purchase ${purchase.invoiceNumber}`,
+      });
+    }
+
+    const originalBankEntry = await tx.bankLedgerEntry.findFirst({
+      where: { sourceType: "PURCHASE", sourceId: purchase.id },
+    });
+    if (originalBankEntry) {
+      await appendBankLedger(tx, {
+        type: "PURCHASE",
+        sourceType: "PURCHASE",
+        sourceId: purchase.id,
+        amount: originalBankEntry.amount.negated(),
+        note: `Deleted purchase ${purchase.invoiceNumber} — reversing bank transfer`,
+      });
+    }
+
+    // Any Payment row still attached at this point is this purchase's own
+    // CASH settlement record (a CREDIT purchase with real payments would
+    // have already been blocked above) — delete it directly; its cash/bank
+    // effect is exactly what was just reversed.
+    await tx.payment.deleteMany({ where: { purchaseId } });
 
     await tx.purchase.delete({ where: { id: purchaseId } });
   });

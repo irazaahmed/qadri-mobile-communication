@@ -139,16 +139,20 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                     <td className={tdClass}>{p.method}</td>
                     <td className={tdClass}>{p.note ?? "-"}</td>
                     <td className={tdClass}>
-                      <ConfirmDeleteButton
-                        action={deletePurchasePaymentAction.bind(null, p.id, purchase.id)}
-                        confirmPhrase={formatCurrency(p.amount.toString())}
-                        title="Delete this payment?"
-                        consequences={[
-                          `Reverses ${formatCurrency(p.amount.toString())} back onto ${purchase.invoiceNumber}'s outstanding balance.`,
-                          "Reverses the cash movement this payment recorded.",
-                        ]}
-                        label="Delete"
-                      />
+                      {purchase.paymentType === "CASH" && !purchase.isReconciliation ? (
+                        <span className="text-xs text-slate">Settled with the purchase — delete the purchase instead.</span>
+                      ) : (
+                        <ConfirmDeleteButton
+                          action={deletePurchasePaymentAction.bind(null, p.id, purchase.id)}
+                          confirmPhrase={formatCurrency(p.amount.toString())}
+                          title="Delete this payment?"
+                          consequences={[
+                            `Reverses ${formatCurrency(p.amount.toString())} back onto ${purchase.invoiceNumber}'s outstanding balance.`,
+                            "Reverses the cash/bank movement this payment recorded.",
+                          ]}
+                          label="Delete"
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -175,10 +179,12 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
             consequences={[
               "Deletes every phone this invoice added to stock (only allowed if still in stock — unsold).",
               "Reverses the accessory quantity this invoice added (only allowed if not already sold elsewhere).",
-              "Reverses this invoice's supplier payable and cash effect.",
-              payments.length > 0
-                ? "Blocked — delete the payment(s) above first."
-                : "Blocked if any payment is recorded against this invoice.",
+              "Reverses this invoice's supplier payable and cash/bank effect.",
+              purchase.paymentType === "CREDIT"
+                ? payments.length > 0
+                  ? "Blocked — delete the payment(s) above first."
+                  : "Blocked if any payment is recorded against this invoice."
+                : "Its own cash/bank settlement record is removed automatically — nothing to delete separately.",
             ]}
             label="Delete this purchase"
           />

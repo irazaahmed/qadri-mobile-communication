@@ -104,8 +104,12 @@ export function PurchaseForm({
   const [supplierError, setSupplierError] = useState<string | null>(null);
   const [addingSupplier, startAddingSupplier] = useTransition();
 
-  const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">("CASH");
+  const [paymentMode, setPaymentMode] = useState<"CASH" | "CREDIT" | "BANK" | "CUSTOM">("CASH");
   const [creditDays, setCreditDays] = useState("30");
+  const [paidAmount, setPaidAmount] = useState("0");
+  const [customCash, setCustomCash] = useState("");
+  const [customBank, setCustomBank] = useState("");
+  const [customCredit, setCustomCredit] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -140,6 +144,10 @@ export function PurchaseForm({
 
   const total = useMemo(() => lines.reduce((sum, l) => sum + lineTotal(l), 0), [lines]);
 
+  const customSum = (Number(customCash) || 0) + (Number(customBank) || 0) + (Number(customCredit) || 0);
+  const willBeCredit =
+    paymentMode === "CREDIT" || (paymentMode === "CUSTOM" && (Number(customCredit) || 0) > 0);
+
   function updateLine(key: string, patch: Partial<Line>) {
     setLines((prev) => prev.map((l) => (l.key === key ? ({ ...l, ...patch } as Line) : l)));
   }
@@ -152,12 +160,40 @@ export function PurchaseForm({
     e.preventDefault();
     setError(null);
 
-    if (paymentType === "CREDIT" && !selectedSupplier) {
-      setError("Select or add a supplier for a credit purchase (payable must be tracked against a supplier).");
-      return;
-    }
     if (lines.length === 0) {
       setError("Add at least one line item.");
+      return;
+    }
+
+    let paymentType: "CASH" | "CREDIT";
+    let finalPaidAmount: number;
+    let finalBankAmount: number;
+
+    if (paymentMode === "CASH") {
+      paymentType = "CASH";
+      finalPaidAmount = total;
+      finalBankAmount = 0;
+    } else if (paymentMode === "BANK") {
+      paymentType = "CASH";
+      finalPaidAmount = total;
+      finalBankAmount = total;
+    } else if (paymentMode === "CREDIT") {
+      paymentType = "CREDIT";
+      finalPaidAmount = Number(paidAmount) || 0;
+      finalBankAmount = 0;
+    } else {
+      if (Math.abs(customSum - total) >= 0.01) {
+        setError(`Cash + bank transfer + credit (${formatCurrency(customSum)}) must equal the purchase total (${formatCurrency(total)}).`);
+        return;
+      }
+      const credit = Number(customCredit) || 0;
+      paymentType = credit > 0 ? "CREDIT" : "CASH";
+      finalPaidAmount = (Number(customCash) || 0) + (Number(customBank) || 0);
+      finalBankAmount = Number(customBank) || 0;
+    }
+
+    if (paymentType === "CREDIT" && !selectedSupplier) {
+      setError("Select or add a supplier for a credit purchase (payable must be tracked against a supplier).");
       return;
     }
     if (paymentType === "CREDIT" && (!creditDays || Number(creditDays) <= 0)) {
@@ -222,6 +258,8 @@ export function PurchaseForm({
         supplierId: selectedSupplier?.id ?? null,
         paymentType,
         creditDays: paymentType === "CREDIT" ? Number(creditDays) : null,
+        paidAmount: finalPaidAmount,
+        bankAmount: finalBankAmount,
         items,
       });
 
@@ -240,7 +278,7 @@ export function PurchaseForm({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <p className="mb-1 text-xs font-medium text-slate">
-              {paymentType === "CREDIT" ? "Supplier *" : "Supplier (optional for cash)"}
+              {willBeCredit ? "Supplier *" : "Supplier (optional for cash)"}
             </p>
             {selectedSupplier ? (
               <div className="flex flex-col gap-2">
@@ -255,7 +293,7 @@ export function PurchaseForm({
                     Clear
                   </button>
                 </div>
-                {Number(selectedSupplier.advanceCredit) > 0 && paymentType === "CREDIT" ? (
+                {Number(selectedSupplier.advanceCredit) > 0 && willBeCredit ? (
                   <p className="text-xs text-success">
                     We have {formatCurrency(selectedSupplier.advanceCredit)} advance credit with this supplier — it
                     will be automatically applied to this purchase. (Advance credit khud is purchase mein adjust ho
@@ -311,35 +349,91 @@ export function PurchaseForm({
           </div>
           <div>
             <p className="mb-1 text-xs font-medium text-slate">Payment type *</p>
-            <div className="flex gap-4 pt-2 text-sm">
+            <div className="flex flex-wrap gap-4 pt-2 text-sm">
               <label className="flex items-center gap-1.5">
-                <input
-                  type="radio"
-                  checked={paymentType === "CASH"}
-                  onChange={() => setPaymentType("CASH")}
-                />
+                <input type="radio" checked={paymentMode === "CASH"} onChange={() => setPaymentMode("CASH")} />
                 Cash
               </label>
               <label className="flex items-center gap-1.5">
-                <input
-                  type="radio"
-                  checked={paymentType === "CREDIT"}
-                  onChange={() => setPaymentType("CREDIT")}
-                />
+                <input type="radio" checked={paymentMode === "CREDIT"} onChange={() => setPaymentMode("CREDIT")} />
                 Credit
               </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={paymentMode === "BANK"} onChange={() => setPaymentMode("BANK")} />
+                Bank transfer
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={paymentMode === "CUSTOM"} onChange={() => setPaymentMode("CUSTOM")} />
+                Custom (split)
+              </label>
             </div>
-            {paymentType === "CREDIT" ? (
-              <div className="mt-3">
+
+            {paymentMode === "CREDIT" ? (
+              <div className="mt-3 grid grid-cols-2 gap-3">
                 <Field label="Credit days *">
+                  <Input type="number" min={1} value={creditDays} onChange={(e) => setCreditDays(e.target.value)} required />
+                </Field>
+                <Field label="Paid upfront" hint="May be 0.">
                   <Input
                     type="number"
-                    min={1}
-                    value={creditDays}
-                    onChange={(e) => setCreditDays(e.target.value)}
-                    required
+                    min={0}
+                    step="0.01"
+                    value={paidAmount}
+                    onChange={(e) => setPaidAmount(e.target.value)}
                   />
                 </Field>
+              </div>
+            ) : null}
+
+            {paymentMode === "CUSTOM" ? (
+              <div className="mt-3 flex flex-col gap-3">
+                <p className="text-xs text-slate">
+                  Split this purchase across cash, bank transfer, and credit — the three must add up to the total.
+                  (Cash, bank transfer aur credit teeno ka jama total ke barabar hona chahiye.)
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Cash">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customCash}
+                      onChange={(e) => setCustomCash(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Bank transfer">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customBank}
+                      onChange={(e) => setCustomBank(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Credit (due later)">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={customCredit}
+                      onChange={(e) => setCustomCredit(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <p className={`text-xs ${Math.abs(customSum - total) < 0.01 ? "text-success" : "text-danger"}`}>
+                  Split total: {formatCurrency(customSum)} / Purchase total: {formatCurrency(total)}
+                </p>
+                {willBeCredit ? (
+                  <Field label="Credit days *" hint="For the credit portion above.">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={creditDays}
+                      onChange={(e) => setCreditDays(e.target.value)}
+                      className="max-w-[160px]"
+                    />
+                  </Field>
+                ) : null}
               </div>
             ) : null}
           </div>

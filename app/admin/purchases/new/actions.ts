@@ -18,6 +18,8 @@ export async function createPurchaseAction(input: CreatePurchaseInput): Promise<
     revalidatePath("/admin/purchases");
     revalidatePath("/admin/inventory/phones");
     revalidatePath("/admin/inventory/accessories");
+    revalidatePath("/admin/bank");
+    revalidatePath("/admin");
     return { id: purchase.id, invoiceNumber: purchase.invoiceNumber };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record purchase." };

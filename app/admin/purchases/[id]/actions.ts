@@ -56,5 +56,6 @@ export async function deletePurchaseAction(purchaseId: string): Promise<{ error:
   revalidatePath("/admin/inventory/accessories");
   revalidatePath("/admin/suppliers");
   revalidatePath("/admin");
+  revalidatePath("/admin/bank");
   redirect("/admin/purchases?deleted=1");
 }
