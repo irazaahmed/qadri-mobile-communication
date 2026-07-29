@@ -18,15 +18,16 @@ export default async function ReconcilePendingBillPage({
     <div>
       <PageHeader
         title="Reconcile pending bill"
-        subtitle="Supplier ka asal bill aa gaya — un phones se jorein jo estimate par pehle hi stock/sale ho chuke hain."
+        subtitle="The supplier's real bill has arrived — link it to phones that were already stocked/sold on an estimate. (Supplier ka asal bill aa gaya — un phones se jorein jo estimate par pehle hi stock/sale ho chuke hain.)"
       />
 
       {phones.length === 0 ? (
         <Card className="p-6">
           <p className="text-sm text-slate">
-            Koi phone abhi "bill pending" nahi hai. Ye page tab kaam aata hai jab koi phone "Add phone" se bina
-            confirm rate ke, andaza cost par stock/sale kar diya jaye — phir jab supplier ka asal bill aaye, yahan se
-            uska exact rate darj karein.
+            No phone is currently &quot;bill pending&quot;. This page is for when a phone was stocked/sold from
+            &quot;Add phone&quot; on an estimated cost without a confirmed rate — once the supplier&apos;s real bill
+            arrives, enter its exact rate here. (Koi phone abhi &quot;bill pending&quot; nahi hai — jab asal bill
+            aaye, yahan se exact rate darj karein.)
           </p>
         </Card>
       ) : (

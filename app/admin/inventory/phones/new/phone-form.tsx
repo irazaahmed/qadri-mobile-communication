@@ -53,11 +53,14 @@ export function PhoneForm({ suppliers }: { suppliers: { id: string; name: string
       <div className="md:col-span-2 flex items-start gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2.5">
         <input type="checkbox" id="costPending" name="costPending" className="mt-0.5" />
         <label htmlFor="costPending" className="text-sm">
-          <span className="font-medium">Bill abhi tak nahi aya — cost sirf andaza hai</span>
+          <span className="font-medium">
+            Bill not received yet — cost is only an estimate (Bill abhi tak nahi aya — cost sirf andaza hai)
+          </span>
           <p className="text-xs text-slate">
-            Item aa gaya hai lekin supplier ka asal bill baad mein aayega. Cost price upar sirf andaza hai — is phone
-            ko sale kar sakte hain, aur bill anay par "Purchases → Reconcile pending bill" se asal rate darj kar ke
-            profit theek ho jayega.
+            The item has arrived but the supplier&apos;s real bill will come later. The cost price above is only an
+            estimate — this phone can still be sold, and once the bill arrives, enter the real rate from
+            &quot;Purchases → Reconcile pending bill&quot; to correct the profit. (Cost sirf andaza hai — bill anay
+            par asal rate darj kar ke profit theek ho jayega.)
           </p>
         </label>
       </div>

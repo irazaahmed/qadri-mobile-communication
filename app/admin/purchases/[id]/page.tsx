@@ -162,9 +162,10 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
         <h2 className="mb-3 font-semibold text-danger">Danger zone</h2>
         {purchase.isReconciliation ? (
           <p className="text-sm text-slate">
-            Ye ek bill-reconciliation invoice hai — ye phones pehle hi stock/sale mein maujood the, isliye is invoice
-            ko delete karna support nahi hai (normal reversal un real phone records ko hi delete kar deta). Agar rate
-            ghalat likha gaya hai, phone ka cost seedha uske Edit page se theek karein.
+            This is a bill-reconciliation invoice — these phones already existed in stock/sale, so deleting this
+            invoice isn&apos;t supported (the normal reversal would delete those real phone records). If a rate
+            was entered wrong, correct the phone&apos;s cost directly on its Edit page instead. (Ye ek
+            bill-reconciliation invoice hai — is phone ka cost seedha uske Edit page se theek karein.)
           </p>
         ) : (
           <ConfirmDeleteButton

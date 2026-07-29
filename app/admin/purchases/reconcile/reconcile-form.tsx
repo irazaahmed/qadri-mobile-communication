@@ -232,7 +232,7 @@ export function ReconcileForm({
 
       <Card className="p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-brand-blue">Is bill par konse phones hain?</h2>
+          <h2 className="font-semibold text-brand-blue">Which phones are on this bill? (Is bill par konse phones hain?)</h2>
           <button
             type="button"
             onClick={() =>

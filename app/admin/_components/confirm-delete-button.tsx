@@ -70,8 +70,9 @@ export function ConfirmDeleteButton({
         ))}
       </ul>
       <p className="mt-3 text-xs text-slate">
-        Confirm karne ke liye neeche <span className="font-mono font-semibold text-danger">{confirmPhrase}</span> type
-        karein — is action ko wapis (undo) nahi kiya ja sakta.
+        Type <span className="font-mono font-semibold text-danger">{confirmPhrase}</span> below to confirm — this
+        action cannot be undone. (Confirm karne ke liye neeche {confirmPhrase} type karein — is action ko wapis
+        nahi kiya ja sakta.)
       </p>
       <input
         value={typed}

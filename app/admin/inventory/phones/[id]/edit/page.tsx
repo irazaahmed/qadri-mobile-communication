@@ -46,9 +46,10 @@ export default async function EditPhonePage({ params }: { params: Promise<{ id: 
         <Card className="mt-6 border-warning/30 p-6">
           <h2 className="mb-1 font-semibold text-warning">Bill pending</h2>
           <p className="mb-3 text-sm text-slate">
-            Is phone ki cost sirf andaza hai — supplier ka asal bill abhi nahi aya. Bill anay par exact rate darj
-            karne ke liye reconcile karein, take profit exact ho jaye (agar ye phone sell ho chuka hai to uska profit
-            bhi khud-ba-khud update ho jayega).
+            This phone&apos;s cost is only an estimate — the supplier&apos;s real bill hasn&apos;t arrived yet. Once
+            it does, reconcile it here to enter the exact rate so profit is exact (if this phone has already been
+            sold, its profit will be corrected automatically too). (Is phone ki cost sirf andaza hai — bill anay par
+            reconcile karein take profit exact ho jaye.)
           </p>
           <a
             href={`/admin/purchases/reconcile?phoneId=${phone.id}`}

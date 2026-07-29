@@ -19,7 +19,7 @@ export function PasswordForm() {
       <Field label="Current password *">
         <Input name="currentPassword" type="password" autoComplete="current-password" required />
       </Field>
-      <Field label="New password *" hint="Kam az kam 8 characters.">
+      <Field label="New password *" hint="At least 8 characters. (Kam az kam 8 characters.)">
         <Input name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
       </Field>
       <Field label="Confirm new password *">

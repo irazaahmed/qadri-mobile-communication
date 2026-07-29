@@ -108,10 +108,13 @@ export function PhoneEditForm({
             className="mt-0.5"
           />
           <label htmlFor="costPending" className="text-sm">
-            <span className="font-medium">Bill abhi tak nahi aya — cost sirf andaza hai</span>
+            <span className="font-medium">
+              Bill not received yet — cost is only an estimate (Bill abhi tak nahi aya — cost sirf andaza hai)
+            </span>
             <p className="text-xs text-slate">
-              Yahan se sirf flag theek kiya ja sakta hai (mistake correct karne ke liye). Agar phone sell ho chuka
-              hai to us ka profit theek karne ke liye "Reconcile bill" istemal karein, na ke ye checkbox.
+              This only corrects the flag itself (for fixing a mistaken entry). If the phone has already been sold,
+              use &quot;Reconcile bill&quot; instead of this checkbox to correct its profit too. (Agar phone sell ho
+              chuka hai to profit theek karne ke liye &quot;Reconcile bill&quot; istemal karein, na ke ye checkbox.)
             </p>
           </label>
         </div>

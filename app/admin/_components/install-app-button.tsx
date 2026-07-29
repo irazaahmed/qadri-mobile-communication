@@ -64,7 +64,8 @@ export function InstallAppButton() {
       </button>
       {showIOSHint ? (
         <p className="mt-2 text-center text-[11px] leading-snug text-white/60">
-          Share button dabayen, phir &ldquo;Add to Home Screen&rdquo; chunein.
+          Tap Share, then &ldquo;Add to Home Screen&rdquo;. (Share button dabayen, phir &ldquo;Add to Home
+          Screen&rdquo; chunein.)
         </p>
       ) : null}
     </div>
