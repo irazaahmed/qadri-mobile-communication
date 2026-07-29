@@ -12,6 +12,7 @@ import {
   trHover,
 } from "../_components/ui";
 import { CsvExportButton } from "../_components/csv-export-button";
+import { InstantFilterForm } from "../_components/instant-filter-form";
 import { formatCurrency, formatDate, formatDateTime } from "../_lib/format";
 
 const STATUS_BADGE = { PAID: "success", PARTIAL: "warning", UNPAID: "danger" } as const;
@@ -71,7 +72,7 @@ export default async function ReportsPage({
     <div>
       <PageHeader title="Reports" subtitle="Profit, cash, and credit — filterable by date range" />
 
-      <form method="get" className="mb-6 flex flex-wrap items-end gap-3">
+      <InstantFilterForm className="mb-6 flex flex-wrap items-end gap-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate">From</label>
           <Input type="date" name="from" defaultValue={toDateInputValue(from)} className="w-40" />
@@ -80,16 +81,10 @@ export default async function ReportsPage({
           <label className="mb-1 block text-xs font-medium text-slate">To</label>
           <Input type="date" name="to" defaultValue={toDateInputValue(to)} className="w-40" />
         </div>
-        <button
-          type="submit"
-          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
-        >
-          Apply
-        </button>
         <a href="/admin/reports" className="px-2 py-2 text-sm text-slate hover:underline">
           Reset to this month
         </a>
-      </form>
+      </InstantFilterForm>
 
       <Card className="mb-6 p-5">
         <h2 className="mb-3 font-semibold text-brand-blue">Profit</h2>

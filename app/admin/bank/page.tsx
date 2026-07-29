@@ -5,8 +5,8 @@ import { Card, EmptyState, PageHeader, table, tableWrap, tdClass, thClass, trHov
 import { CsvExportButton } from "../_components/csv-export-button";
 import { formatCurrency, formatDateTime } from "../_lib/format";
 import { BankForm } from "./bank-form";
-import { SupplierBulkPaymentForm } from "../suppliers/[id]/payment-form";
-import { CustomerBulkPaymentForm } from "../customers/[id]/payment-form";
+import { SupplierPayFromBankPicker } from "./supplier-pay-picker";
+import { CustomerReceiveFromBankPicker } from "./customer-receive-picker";
 
 export default async function BankPage() {
   const [balance, entries, suppliers, supplierBalances, customers, customerBalances] = await Promise.all([
@@ -62,19 +62,7 @@ export default async function BankPage() {
           {suppliersOwed.length === 0 ? (
             <EmptyState label="No supplier currently has an outstanding payable." />
           ) : (
-            <div className="flex flex-col gap-4">
-              {suppliersOwed.map((s) => (
-                <div key={s.id} className="rounded-lg border border-slate/15 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <a href={`/admin/suppliers/${s.id}`} className="text-sm font-medium text-brand-blue hover:underline">
-                      {s.name}
-                    </a>
-                    <span className="text-sm font-medium text-danger">{formatCurrency(s.outstanding)}</span>
-                  </div>
-                  <SupplierBulkPaymentForm supplierId={s.id} outstanding={s.outstanding} defaultMethod="BANK_TRANSFER" />
-                </div>
-              ))}
-            </div>
+            <SupplierPayFromBankPicker suppliers={suppliersOwed} />
           )}
         </Card>
 
@@ -87,19 +75,7 @@ export default async function BankPage() {
           {customersOwing.length === 0 ? (
             <EmptyState label="No customer currently has an outstanding receivable." />
           ) : (
-            <div className="flex flex-col gap-4">
-              {customersOwing.map((c) => (
-                <div key={c.id} className="rounded-lg border border-slate/15 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <a href={`/admin/customers/${c.id}`} className="text-sm font-medium text-brand-blue hover:underline">
-                      {c.name}
-                    </a>
-                    <span className="text-sm font-medium text-warning">{formatCurrency(c.outstanding)}</span>
-                  </div>
-                  <CustomerBulkPaymentForm customerId={c.id} outstanding={c.outstanding} defaultMethod="BANK_TRANSFER" />
-                </div>
-              ))}
-            </div>
+            <CustomerReceiveFromBankPicker customers={customersOwing} />
           )}
         </Card>
       </div>

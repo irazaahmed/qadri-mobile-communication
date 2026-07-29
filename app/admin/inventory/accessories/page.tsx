@@ -1,4 +1,4 @@
-import { getAccessoryBrands, getAccessoryStockSummary, listAccessories } from "@/lib/actions/accessories";
+import { getAccessoryBrandQuantities, getAccessoryBrands, getAccessoryStockSummary, listAccessories } from "@/lib/actions/accessories";
 import {
   Badge,
   ButtonLink,
@@ -12,6 +12,7 @@ import {
   thClass,
   trHover,
 } from "../../_components/ui";
+import { InstantFilterForm } from "../../_components/instant-filter-form";
 import { formatCurrency } from "../../_lib/format";
 
 export default async function AccessoriesPage({
@@ -20,7 +21,7 @@ export default async function AccessoriesPage({
   searchParams: Promise<{ name?: string; brand?: string; category?: string; lowStockOnly?: string }>;
 }) {
   const params = await searchParams;
-  const [accessories, brands, stockSummary] = await Promise.all([
+  const [accessories, brands, brandQuantities, stockSummary] = await Promise.all([
     listAccessories({
       name: params.name || undefined,
       brand: params.brand || undefined,
@@ -28,8 +29,17 @@ export default async function AccessoriesPage({
       lowStockOnly: params.lowStockOnly === "1",
     }),
     getAccessoryBrands(),
+    getAccessoryBrandQuantities(),
     getAccessoryStockSummary(),
   ]);
+  const totalBrandQuantity = Object.values(brandQuantities).reduce((sum, n) => sum + n, 0);
+
+  const nameCounts = new Map<string, number>();
+  for (const a of accessories) {
+    const key = `${a.brand} ${a.name}${a.variant ? ` (${a.variant})` : ""}`;
+    nameCounts.set(key, (nameCounts.get(key) ?? 0) + a.quantity);
+  }
+  const nameCountRows = Array.from(nameCounts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
   return (
     <div>
@@ -61,7 +71,7 @@ export default async function AccessoriesPage({
               !params.brand ? "bg-brand-blue text-white" : "bg-surface-muted text-slate hover:bg-slate/10"
             }`}
           >
-            All brands
+            All brands ({totalBrandQuantity})
           </a>
           {brands.map((b) => (
             <a
@@ -73,13 +83,13 @@ export default async function AccessoriesPage({
                   : "bg-surface-muted text-slate hover:bg-slate/10"
               }`}
             >
-              {b}
+              {b} ({brandQuantities[b] ?? 0})
             </a>
           ))}
         </div>
       ) : null}
 
-      <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
+      <InstantFilterForm className="mb-4 flex flex-wrap items-center gap-2">
         <Input name="name" placeholder="Name" defaultValue={params.name} className="max-w-[160px]" />
         <Input name="brand" placeholder="Brand" defaultValue={params.brand} className="max-w-[140px]" />
         <Input name="category" placeholder="Category" defaultValue={params.category} className="max-w-[140px]" />
@@ -87,16 +97,20 @@ export default async function AccessoriesPage({
           <option value="">All stock levels</option>
           <option value="1">Low stock only</option>
         </Select>
-        <button
-          type="submit"
-          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
-        >
-          Search
-        </button>
         <a href="/admin/inventory/accessories" className="px-2 py-2 text-sm text-slate hover:underline">
           Clear
         </a>
-      </form>
+      </InstantFilterForm>
+
+      {nameCountRows.length > 0 ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {nameCountRows.map(([label, qty]) => (
+            <span key={label} className="rounded-full bg-surface-muted px-3 py-1 text-xs text-slate">
+              {label}: <span className="font-medium text-brand-blue">{qty}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {accessories.length === 0 ? (
         <EmptyState label="No accessories match this search." />

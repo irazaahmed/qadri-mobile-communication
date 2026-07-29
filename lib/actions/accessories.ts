@@ -167,6 +167,16 @@ export async function getAccessoryBrands(): Promise<string[]> {
   return rows.map((r) => r.brand);
 }
 
+/** Total quantity in stock per brand, for the brand quick-filter buttons. */
+export async function getAccessoryBrandQuantities(): Promise<Record<string, number>> {
+  const rows = await prisma.accessory.groupBy({
+    by: ["brand"],
+    _sum: { quantity: true },
+  });
+
+  return Object.fromEntries(rows.map((r) => [r.brand, r._sum.quantity ?? 0]));
+}
+
 /**
  * Deletes an accessory catalog row added by mistake (wrong name/brand typo,
  * duplicate row, wrong initial quantity). Accessories are aggregate stock

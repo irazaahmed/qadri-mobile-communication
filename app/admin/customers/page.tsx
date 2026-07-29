@@ -14,6 +14,7 @@ import {
 } from "../_components/ui";
 import { formatCurrency } from "../_lib/format";
 import { DeleteButton } from "../_components/delete-button";
+import { InstantFilterForm } from "../_components/instant-filter-form";
 import { deleteCustomerAction } from "./actions";
 
 export default async function CustomersPage({
@@ -43,19 +44,13 @@ export default async function CustomersPage({
         <ErrorBanner message={params.error} />
       </div>
 
-      <form method="get" className="mb-4 flex flex-wrap gap-2">
+      <InstantFilterForm className="mb-4 flex flex-wrap items-center gap-2">
         <Input name="name" placeholder="Search by name" defaultValue={params.name} className="max-w-[200px]" />
         <Input name="phone" placeholder="Search by phone" defaultValue={params.phone} className="max-w-[200px]" />
-        <button
-          type="submit"
-          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
-        >
-          Search
-        </button>
         <Link href="/admin/customers" className="px-2 py-2 text-sm text-slate hover:underline">
           Clear
         </Link>
-      </form>
+      </InstantFilterForm>
 
       {customers.length === 0 ? (
         <EmptyState label="No customers yet." />

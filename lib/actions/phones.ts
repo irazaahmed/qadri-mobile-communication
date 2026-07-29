@@ -273,6 +273,21 @@ export async function getPhoneBrands(): Promise<string[]> {
 }
 
 /**
+ * Unit count per brand — respects an optional status filter (matching
+ * whatever status filter is active on the Phones list) but not brand/model/
+ * imei, since these counts feed the brand quick-filter buttons themselves.
+ */
+export async function getPhoneBrandCounts(status?: PhoneStatus): Promise<Record<string, number>> {
+  const rows = await prisma.phone.groupBy({
+    by: ["brand"],
+    where: status ? { status } : undefined,
+    _count: { _all: true },
+  });
+
+  return Object.fromEntries(rows.map((r) => [r.brand, r._count._all]));
+}
+
+/**
  * Deletes a phone that was added by mistake via manual stock entry. Never a
  * cash/ledger event (matching createPhone's own note that adding a phone to
  * stock isn't one), so nothing to reverse there — but only safe to delete

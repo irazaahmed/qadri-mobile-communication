@@ -12,6 +12,7 @@ import {
   thClass,
   trHover,
 } from "../_components/ui";
+import { InstantFilterForm } from "../_components/instant-filter-form";
 import { formatCurrency, formatDate, isOverdue } from "../_lib/format";
 
 const STATUS_BADGE = { PAID: "success", PARTIAL: "warning", UNPAID: "danger" } as const;
@@ -43,7 +44,7 @@ export default async function SalesPage({
         }
       />
 
-      <form method="get" className="mb-4 flex flex-wrap gap-2">
+      <InstantFilterForm className="mb-4 flex flex-wrap items-center gap-2">
         <Select name="customerId" defaultValue={params.customerId} className="max-w-[200px]">
           <option value="">All customers</option>
           {customers.map((c) => (
@@ -58,16 +59,10 @@ export default async function SalesPage({
           <option value="PARTIAL">Partial</option>
           <option value="UNPAID">Unpaid</option>
         </Select>
-        <button
-          type="submit"
-          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
-        >
-          Filter
-        </button>
         <a href="/admin/sales" className="px-2 py-2 text-sm text-slate hover:underline">
           Clear
         </a>
-      </form>
+      </InstantFilterForm>
 
       {sales.length === 0 ? (
         <EmptyState label="No sales yet." />

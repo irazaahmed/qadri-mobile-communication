@@ -14,6 +14,7 @@ import {
 } from "../_components/ui";
 import { formatCurrency } from "../_lib/format";
 import { DeleteButton } from "../_components/delete-button";
+import { InstantFilterForm } from "../_components/instant-filter-form";
 import { deleteSupplierAction } from "./actions";
 
 export default async function SuppliersPage({
@@ -43,18 +44,12 @@ export default async function SuppliersPage({
         <ErrorBanner message={params.error} />
       </div>
 
-      <form method="get" className="mb-4 flex flex-wrap gap-2">
+      <InstantFilterForm className="mb-4 flex flex-wrap items-center gap-2">
         <Input name="name" placeholder="Search by name" defaultValue={params.name} className="max-w-[220px]" />
-        <button
-          type="submit"
-          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
-        >
-          Search
-        </button>
         <Link href="/admin/suppliers" className="px-2 py-2 text-sm text-slate hover:underline">
           Clear
         </Link>
-      </form>
+      </InstantFilterForm>
 
       {suppliers.length === 0 ? (
         <EmptyState label="No suppliers yet." />

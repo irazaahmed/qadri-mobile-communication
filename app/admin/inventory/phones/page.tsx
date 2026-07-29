@@ -1,4 +1,4 @@
-import { getPendingBillCount, getPhoneBrands, getPhoneStockSummary, listPhones } from "@/lib/actions/phones";
+import { getPendingBillCount, getPhoneBrandCounts, getPhoneBrands, getPhoneStockSummary, listPhones } from "@/lib/actions/phones";
 import { listSuppliers } from "@/lib/actions/suppliers";
 import type { PhoneStatus } from "@prisma/client";
 import {
@@ -14,6 +14,7 @@ import {
   trHover,
   EmptyState,
 } from "../../_components/ui";
+import { InstantFilterForm } from "../../_components/instant-filter-form";
 import { formatCurrency, formatDate } from "../../_lib/format";
 
 const STATUS_OPTIONS: PhoneStatus[] = [
@@ -49,14 +50,23 @@ export default async function PhonesPage({
     status: (params.status as PhoneStatus) || undefined,
   };
 
-  const [phones, suppliers, brands, stockSummary, pendingBillCount] = await Promise.all([
+  const [phones, suppliers, brands, brandCounts, stockSummary, pendingBillCount] = await Promise.all([
     listPhones(filters),
     listSuppliers(),
     getPhoneBrands(),
+    getPhoneBrandCounts(filters.status),
     getPhoneStockSummary(),
     getPendingBillCount(),
   ]);
   const supplierName = new Map(suppliers.map((s) => [s.id, s.name]));
+  const totalBrandCount = Object.values(brandCounts).reduce((sum, n) => sum + n, 0);
+
+  const modelCounts = new Map<string, number>();
+  for (const p of phones) {
+    const key = `${p.brand} ${p.model}`;
+    modelCounts.set(key, (modelCounts.get(key) ?? 0) + 1);
+  }
+  const modelCountRows = Array.from(modelCounts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
   return (
     <div>
@@ -97,7 +107,7 @@ export default async function PhonesPage({
               !params.brand ? "bg-brand-blue text-white" : "bg-surface-muted text-slate hover:bg-slate/10"
             }`}
           >
-            All brands
+            All brands ({totalBrandCount})
           </a>
           {brands.map((b) => (
             <a
@@ -109,13 +119,13 @@ export default async function PhonesPage({
                   : "bg-surface-muted text-slate hover:bg-slate/10"
               }`}
             >
-              {b}
+              {b} ({brandCounts[b] ?? 0})
             </a>
           ))}
         </div>
       ) : null}
 
-      <form method="get" className="mb-4 flex flex-wrap gap-2">
+      <InstantFilterForm className="mb-4 flex flex-wrap items-center gap-2">
         <Input name="imei" placeholder="Search IMEI" defaultValue={params.imei} className="max-w-[180px]" />
         <Input name="brand" placeholder="Brand" defaultValue={params.brand} className="max-w-[140px]" />
         <Input name="model" placeholder="Model" defaultValue={params.model} className="max-w-[140px]" />
@@ -127,16 +137,20 @@ export default async function PhonesPage({
             </option>
           ))}
         </Select>
-        <button
-          type="submit"
-          className="rounded-full bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-light"
-        >
-          Search
-        </button>
         <a href="/admin/inventory/phones" className="px-2 py-2 text-sm text-slate hover:underline">
           Clear
         </a>
-      </form>
+      </InstantFilterForm>
+
+      {modelCountRows.length > 0 ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {modelCountRows.map(([label, count]) => (
+            <span key={label} className="rounded-full bg-surface-muted px-3 py-1 text-xs text-slate">
+              {label}: <span className="font-medium text-brand-blue">{count}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {phones.length === 0 ? (
         <EmptyState label="No phones match this search." />
