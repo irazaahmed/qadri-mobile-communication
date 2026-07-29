@@ -125,8 +125,28 @@ export function Badge({
 const fieldClass =
   "w-full rounded-lg border border-slate/25 bg-surface px-3 py-2 text-sm text-foreground placeholder:text-slate/60 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/30 disabled:bg-surface-muted disabled:text-slate";
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`${fieldClass} ${className}`} {...props} />;
+/**
+ * Number inputs blur on mouse-wheel scroll so an accidental scroll over the
+ * field (e.g. while scrolling the page) never silently bumps the value —
+ * every numeric entry (rate, quantity, amount, ...) stays exactly what was
+ * typed.
+ */
+export function Input({ className = "", type, onWheel, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type={type}
+      className={`${fieldClass} ${className}`}
+      onWheel={
+        type === "number"
+          ? (e) => {
+              e.currentTarget.blur();
+              onWheel?.(e);
+            }
+          : onWheel
+      }
+      {...props}
+    />
+  );
 }
 
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
