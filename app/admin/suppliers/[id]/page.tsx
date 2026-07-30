@@ -16,6 +16,9 @@ import {
 } from "../../_components/ui";
 import { formatCurrency, formatDateTime, isOverdue, formatDate } from "../../_lib/format";
 import { SupplierBulkPaymentForm } from "./payment-form";
+import { SupplierOpeningBalanceForm } from "./opening-balance-form";
+import { deleteSupplierOpeningBalanceAction } from "./opening-balance-actions";
+import { ConfirmDeleteButton } from "../../_components/confirm-delete-button";
 
 export default async function SupplierLedgerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -68,6 +71,12 @@ export default async function SupplierLedgerPage({ params }: { params: Promise<{
             hoga)
           </p>
           <SupplierBulkPaymentForm supplierId={supplier.id} outstanding={outstandingAmount} />
+        </div>
+        <div className="mt-4 border-t border-slate/10 pt-4">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate">
+            Previous balance from before this system (Is system se pehle ka baqaya)
+          </p>
+          <SupplierOpeningBalanceForm supplierId={supplier.id} />
         </div>
       </Card>
 
@@ -142,10 +151,11 @@ export default async function SupplierLedgerPage({ params }: { params: Promise<{
                 <th className={thClass}>Note</th>
                 <th className={thClass}>Amount</th>
                 <th className={thClass}>Balance after</th>
+                <th className={thClass}></th>
               </tr>
             </thead>
             <tbody>
-              {ledger.map((entry) => (
+              {ledger.map((entry, i) => (
                 <tr key={entry.id} className={trHover}>
                   <td className={tdClass}>{formatDateTime(entry.createdAt)}</td>
                   <td className={tdClass}>{entry.type}</td>
@@ -156,6 +166,17 @@ export default async function SupplierLedgerPage({ params }: { params: Promise<{
                     </span>
                   </td>
                   <td className={tdClass}>{formatCurrency(entry.balanceAfter.toString())}</td>
+                  <td className={tdClass}>
+                    {entry.type === "OPENING_BALANCE" && i === ledger.length - 1 ? (
+                      <ConfirmDeleteButton
+                        action={deleteSupplierOpeningBalanceAction.bind(null, supplier.id, entry.id)}
+                        confirmPhrase={formatCurrency(entry.amount.toString())}
+                        title="Undo this opening balance?"
+                        consequences={[`Reverses ${formatCurrency(entry.amount.toString())} off this supplier's balance.`]}
+                        label="Undo"
+                      />
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -3,6 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma, PaymentStatus, PhoneStatus } from "@prisma/client";
 import { daysUntilWarrantyExpiry } from "@/lib/warranty";
+import { getSupplierBalances } from "@/lib/actions/suppliers";
+import { getCustomerBalances } from "@/lib/actions/customers";
 
 /**
  * lib/actions/dashboard.ts
@@ -237,24 +239,28 @@ export interface PayableTotalRow {
   totalReceivable: string;
 }
 
+/**
+ * Totals come from each party's own ledger balance (the same numbers shown
+ * on the Suppliers/Customers list pages and their detail pages), not from
+ * summing Purchase/Sale rows directly — this is the only way the total
+ * picks up opening balances (previous credit/advance carried over from
+ * before this system, entered directly against a Customer/Supplier with no
+ * backing invoice — see lib/actions/customers.ts / suppliers.ts). A
+ * negative ledger balance is an advance, not a payable/receivable, so only
+ * positive balances are summed.
+ */
 export async function getOutstandingTotals(): Promise<PayableTotalRow> {
-  const [purchases, sales] = await Promise.all([
-    prisma.purchase.findMany({
-      where: { status: { not: PaymentStatus.PAID } },
-      select: { totalAmount: true, paidAmount: true },
-    }),
-    prisma.sale.findMany({
-      where: { status: { not: PaymentStatus.PAID } },
-      select: { totalAmount: true, paidAmount: true },
-    }),
+  const [supplierBalances, customerBalances] = await Promise.all([
+    getSupplierBalances(),
+    getCustomerBalances(),
   ]);
 
-  const totalPayable = purchases.reduce(
-    (sum, p) => sum.plus(p.totalAmount.minus(p.paidAmount)),
+  const totalPayable = Array.from(supplierBalances.values()).reduce(
+    (sum, balance) => sum.plus(Prisma.Decimal.max(0, new Prisma.Decimal(balance))),
     new Prisma.Decimal(0)
   );
-  const totalReceivable = sales.reduce(
-    (sum, s) => sum.plus(s.totalAmount.minus(s.paidAmount)),
+  const totalReceivable = Array.from(customerBalances.values()).reduce(
+    (sum, balance) => sum.plus(Prisma.Decimal.max(0, new Prisma.Decimal(balance))),
     new Prisma.Decimal(0)
   );
 
