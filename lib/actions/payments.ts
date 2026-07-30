@@ -203,7 +203,10 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
         throw new Error("purchaseId is required for a payable payment.");
       }
 
-      const purchase = await tx.purchase.findUniqueOrThrow({ where: { id: input.purchaseId } });
+      const purchase = await tx.purchase.findUniqueOrThrow({
+        where: { id: input.purchaseId },
+        include: { supplier: true },
+      });
       const remaining = purchase.totalAmount.minus(purchase.paidAmount);
 
       if (amount.greaterThan(remaining)) {
@@ -217,7 +220,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
         sourceType: "CREDIT_PAYMENT_OUT",
         sourceId: payment.id,
         amount: amount.negated(),
-        note: `Payment for ${purchase.invoiceNumber}`,
+        note: `Payment to ${purchase.supplier?.name ?? "supplier"} for ${purchase.invoiceNumber}`,
       });
 
       return payment;
@@ -227,7 +230,10 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
       throw new Error("saleId is required for a receivable payment.");
     }
 
-    const sale = await tx.sale.findUniqueOrThrow({ where: { id: input.saleId } });
+    const sale = await tx.sale.findUniqueOrThrow({
+      where: { id: input.saleId },
+      include: { customer: true },
+    });
     const remaining = sale.totalAmount.minus(sale.paidAmount);
 
     if (amount.greaterThan(remaining)) {
@@ -241,7 +247,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
       sourceType: "CREDIT_PAYMENT_IN",
       sourceId: payment.id,
       amount,
-      note: `Payment for ${sale.invoiceNumber}`,
+      note: `Payment from ${sale.customer?.name ?? "customer"} for ${sale.invoiceNumber}`,
     });
 
     return payment;
@@ -280,6 +286,7 @@ export async function recordSupplierBulkPayment(input: RecordSupplierBulkPayment
   }
 
   return prisma.$transaction(async (tx) => {
+    const supplier = await tx.supplier.findUniqueOrThrow({ where: { id: input.supplierId } });
     const outstanding = await tx.purchase.findMany({
       where: { supplierId: input.supplierId, status: { not: PaymentStatus.PAID } },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
@@ -327,8 +334,8 @@ export async function recordSupplierBulkPayment(input: RecordSupplierBulkPayment
       amount: amount.negated(),
       note:
         invoiceNumbers.length > 0
-          ? `Bulk payment covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`
-          : `Advance payment to supplier${input.note ? ` — ${input.note}` : ""}`,
+          ? `Bulk payment to ${supplier.name} covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`
+          : `Advance payment to ${supplier.name}${input.note ? ` — ${input.note}` : ""}`,
     });
 
     return { amount: amount.toString(), invoiceNumbers, advanceAmount: leftover.toString() };
@@ -359,6 +366,7 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
   }
 
   return prisma.$transaction(async (tx) => {
+    const customer = await tx.customer.findUniqueOrThrow({ where: { id: input.customerId } });
     const outstanding = await tx.sale.findMany({
       where: { customerId: input.customerId, status: { not: PaymentStatus.PAID } },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
@@ -406,8 +414,8 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
       amount,
       note:
         invoiceNumbers.length > 0
-          ? `Bulk payment covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`
-          : `Advance payment from customer${input.note ? ` — ${input.note}` : ""}`,
+          ? `Bulk payment from ${customer.name} covering ${invoiceNumbers.join(", ")}${input.note ? ` — ${input.note}` : ""}`
+          : `Advance payment from ${customer.name}${input.note ? ` — ${input.note}` : ""}`,
     });
 
     return { amount: amount.toString(), invoiceNumbers, advanceAmount: leftover.toString() };
@@ -427,7 +435,10 @@ export async function recordCustomerBulkPayment(input: RecordCustomerBulkPayment
  */
 export async function deletePayment(paymentId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.findUnique({ where: { id: paymentId } });
+    const payment = await tx.payment.findUnique({
+      where: { id: paymentId },
+      include: { supplier: true, customer: true },
+    });
     if (!payment) {
       throw new Error("Payment not found.");
     }
@@ -460,14 +471,14 @@ export async function deletePayment(paymentId: string): Promise<void> {
           supplierId: payment.supplierId,
           type: "VOID",
           amount: payment.amount,
-          note: "Deleted advance payment",
+          note: `Deleted advance payment to ${payment.supplier?.name ?? "supplier"}`,
         });
         await appendSettlementLedger(tx, {
           method: payment.method,
           sourceType: "CREDIT_PAYMENT_OUT",
           sourceId: payment.id,
           amount: payment.amount,
-          note: "Deleted advance payment",
+          note: `Deleted advance payment to ${payment.supplier?.name ?? "supplier"}`,
         });
         await tx.payment.delete({ where: { id: paymentId } });
         return;
@@ -501,7 +512,7 @@ export async function deletePayment(paymentId: string): Promise<void> {
         purchaseId: purchase.id,
         type: "VOID",
         amount: payment.amount,
-        note: `Deleted payment for ${purchase.invoiceNumber}`,
+        note: `Deleted payment to ${payment.supplier?.name ?? "supplier"} for ${purchase.invoiceNumber}`,
       });
 
       await appendSettlementLedger(tx, {
@@ -509,7 +520,7 @@ export async function deletePayment(paymentId: string): Promise<void> {
         sourceType: "CREDIT_PAYMENT_OUT",
         sourceId: payment.id,
         amount: payment.amount,
-        note: `Deleted payment for ${purchase.invoiceNumber}`,
+        note: `Deleted payment to ${payment.supplier?.name ?? "supplier"} for ${purchase.invoiceNumber}`,
       });
     } else {
       if (!payment.customerId) {
@@ -535,14 +546,14 @@ export async function deletePayment(paymentId: string): Promise<void> {
           customerId: payment.customerId,
           type: "VOID",
           amount: payment.amount,
-          note: "Deleted advance payment",
+          note: `Deleted advance payment from ${payment.customer?.name ?? "customer"}`,
         });
         await appendSettlementLedger(tx, {
           method: payment.method,
           sourceType: "CREDIT_PAYMENT_IN",
           sourceId: payment.id,
           amount: payment.amount.negated(),
-          note: "Deleted advance payment",
+          note: `Deleted advance payment from ${payment.customer?.name ?? "customer"}`,
         });
         await tx.payment.delete({ where: { id: paymentId } });
         return;
@@ -561,7 +572,7 @@ export async function deletePayment(paymentId: string): Promise<void> {
         saleId: sale.id,
         type: "VOID",
         amount: payment.amount,
-        note: `Deleted payment for ${sale.invoiceNumber}`,
+        note: `Deleted payment from ${payment.customer?.name ?? "customer"} for ${sale.invoiceNumber}`,
       });
 
       await appendSettlementLedger(tx, {
@@ -569,7 +580,7 @@ export async function deletePayment(paymentId: string): Promise<void> {
         sourceType: "CREDIT_PAYMENT_IN",
         sourceId: payment.id,
         amount: payment.amount.negated(),
-        note: `Deleted payment for ${sale.invoiceNumber}`,
+        note: `Deleted payment from ${payment.customer?.name ?? "customer"} for ${sale.invoiceNumber}`,
       });
     }
 
