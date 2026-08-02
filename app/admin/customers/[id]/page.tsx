@@ -19,6 +19,8 @@ import { CustomerBulkPaymentForm } from "./payment-form";
 import { CustomerOpeningBalanceForm } from "./opening-balance-form";
 import { deleteCustomerOpeningBalanceAction } from "./opening-balance-actions";
 import { ConfirmDeleteButton } from "../../_components/confirm-delete-button";
+import { CsvExportButton } from "../../_components/csv-export-button";
+import { WhatsAppShareButton } from "../../_components/whatsapp-share-button";
 
 export default async function CustomerLedgerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -34,6 +36,31 @@ export default async function CustomerLedgerPage({ params }: { params: Promise<{
   const balanceNum = Number(currentBalance);
   const outstandingAmount = Math.max(0, balanceNum);
   const advanceAmount = Math.max(0, -balanceNum);
+
+  const ledgerCsvRows = ledger.map((e) => [
+    formatDateTime(e.createdAt),
+    e.type,
+    e.note ?? "",
+    e.amount.toString(),
+    e.balanceAfter.toString(),
+  ]);
+
+  const ledgerShareText = [
+    `Qadri Mobile Communication — ${customer.name} ka ledger`,
+    ``,
+    advanceAmount > 0
+      ? `Aap ka advance hamare pass: ${formatCurrency(String(advanceAmount))}`
+      : `Aap ka hamare pass baqaya: ${formatCurrency(currentBalance)}`,
+    ``,
+    ...ledger.map(
+      (e) =>
+        `${formatDate(e.createdAt)} — ${e.type} — ${formatCurrency(e.amount.toString())} (Balance: ${formatCurrency(
+          e.balanceAfter.toString()
+        )})`
+    ),
+    ``,
+    `Shukriya!`,
+  ].join("\n");
 
   return (
     <div>
@@ -135,8 +162,23 @@ export default async function CustomerLedgerPage({ params }: { params: Promise<{
         </div>
       )}
 
-      <div className="mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold text-brand-blue">Ledger</h2>
+        {ledger.length > 0 ? (
+          <div className="flex items-center gap-2">
+            <CsvExportButton
+              filename={`${customer.name}-ledger.csv`}
+              headers={["Date", "Type", "Note", "Amount", "Balance after"]}
+              rows={ledgerCsvRows}
+            />
+            <WhatsAppShareButton
+              defaultPhone={customer.phone}
+              message={ledgerShareText}
+              label="Share on WhatsApp"
+              prompt={`WhatsApp number likhein jis ko ${customer.name} ka ledger bhejna hai. OK karte hi WhatsApp us ki chat khol dega, ledger already likha hoga — bas Send dabayein.`}
+            />
+          </div>
+        ) : null}
       </div>
       {ledger.length === 0 ? (
         <EmptyState label="No ledger activity yet." />
