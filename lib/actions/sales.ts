@@ -456,6 +456,24 @@ export async function getSaleById(id: string): Promise<SaleWithItems | null> {
 }
 
 /**
+ * How much of this sale's upfront paidAmount landed in cash vs bank —
+ * reconstructed from the CashLedgerEntry/BankLedgerEntry rows createSale
+ * wrote (sourceType "SALE", sourceId = sale.id), since the split itself
+ * isn't stored on the Sale row. Read-only; used by the invoice's WhatsApp
+ * share message to break the bill down by payment method.
+ */
+export async function getSaleInitialPaymentSplit(saleId: string): Promise<{ cash: string; bank: string }> {
+  const [cashEntry, bankEntry] = await Promise.all([
+    prisma.cashLedgerEntry.findFirst({ where: { sourceType: "SALE", sourceId: saleId } }),
+    prisma.bankLedgerEntry.findFirst({ where: { sourceType: "SALE", sourceId: saleId } }),
+  ]);
+  return {
+    cash: (cashEntry?.amount ?? new Prisma.Decimal(0)).toString(),
+    bank: (bankEntry?.amount ?? new Prisma.Decimal(0)).toString(),
+  };
+}
+
+/**
  * Deletes a wrongly-entered Sale invoice and reverses everything it did:
  * phones it sold go back to IN_STOCK (never deleted — they're real physical
  * units, just un-sold), accessory quantity it took out is added back, and

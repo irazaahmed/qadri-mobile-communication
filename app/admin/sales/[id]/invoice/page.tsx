@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { getSaleById } from "@/lib/actions/sales";
+import { getSaleById, getSaleInitialPaymentSplit } from "@/lib/actions/sales";
 import { getCustomerById } from "@/lib/actions/customers";
 import { getPhoneById } from "@/lib/actions/phones";
 import { getAccessoryById } from "@/lib/actions/accessories";
@@ -19,9 +19,10 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const sale = await getSaleById(id);
   if (!sale) notFound();
 
-  const [customer, payments] = await Promise.all([
+  const [customer, payments, initialSplit] = await Promise.all([
     sale.customerId ? getCustomerById(sale.customerId) : Promise.resolve(null),
     listPaymentsForSale(sale.id),
+    getSaleInitialPaymentSplit(sale.id),
   ]);
 
   const items = await Promise.all(
@@ -89,16 +90,41 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   }
 
   const amountDue = Number(sale.totalAmount) - Number(sale.paidAmount);
-  const shareText = `Invoice ${sale.invoiceNumber} from Qadri Mobile Communication — total ${formatCurrency(
-    sale.totalAmount.toString()
-  )}, ${sale.status === "PAID" ? "paid in full" : `due ${formatCurrency(amountDue)}`}.`;
+
+  // Payment breakdown by method — the upfront split at sale time
+  // (cash/bank, see getSaleInitialPaymentSplit) plus any later top-up
+  // Payments, so the WhatsApp message reflects everything collected so far.
+  const methodTotals = { CASH: Number(initialSplit.cash), BANK_TRANSFER: Number(initialSplit.bank), JAZZCASH: 0, EASYPAISA: 0 };
+  for (const p of payments) {
+    methodTotals[p.method] = (methodTotals[p.method] ?? 0) + Number(p.amount);
+  }
+
+  const shareText = [
+    `Qadri Mobile Communication ki taraf se purchasing ka shukriya!`,
+    ``,
+    `Invoice: ${sale.invoiceNumber} (${formatDate(sale.createdAt)})`,
+    ``,
+    `Aap ne ye purchase kiya:`,
+    ...displayRows.map((row) => `- ${row.label}${row.qty > 1 ? ` x${row.qty}` : ""} — ${formatCurrency(row.lineTotal)}`),
+    ``,
+    `Total Bill: ${formatCurrency(sale.totalAmount.toString())}`,
+    ``,
+    `Payment:`,
+    ...(methodTotals.CASH > 0 ? [`Cash: ${formatCurrency(methodTotals.CASH)}`] : []),
+    ...(methodTotals.BANK_TRANSFER > 0 ? [`Bank Transfer: ${formatCurrency(methodTotals.BANK_TRANSFER)}`] : []),
+    ...(methodTotals.JAZZCASH > 0 ? [`JazzCash: ${formatCurrency(methodTotals.JAZZCASH)}`] : []),
+    ...(methodTotals.EASYPAISA > 0 ? [`EasyPaisa: ${formatCurrency(methodTotals.EASYPAISA)}`] : []),
+    ...(amountDue > 0 ? [`Credit (Baqaya): ${formatCurrency(amountDue)}`] : []),
+    ``,
+    `Shukriya, dobara tashreef laayein!`,
+  ].join("\n");
 
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-4 flex justify-end print:hidden">
         <InvoiceActions
           invoiceNumber={sale.invoiceNumber}
-          customerPhone={customer?.phone ?? null}
+          defaultPhone={customer?.phone ?? ""}
           shareText={shareText}
         />
       </div>

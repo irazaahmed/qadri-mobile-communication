@@ -4,49 +4,34 @@ import { useState } from "react";
 import { Button } from "../../../_components/ui";
 
 /**
- * Download + Share per the invoice-generation skill:
+ * Download + Share:
  * - Download triggers the browser print dialog (window.print()); the shop
- *   owner saves as PDF from there. No canvas/vector PDF library is used.
- * - Share uses the Web Share API. True Level 2 file-attach share (handing a
- *   PDF Blob to navigator.share so WhatsApp gets it as an attachment)
- *   requires an actual PDF File object — generating one would mean pulling
- *   in a PDF-rendering library, which this skill explicitly rules out in
- *   favor of browser-native printing. So this feature-detects
- *   `navigator.share` (Level 1, title/text/url only) for mobile share
- *   sheets, and on any browser without it falls back to opening
- *   `wa.me/<phone>` with a prefilled note plus triggering print so the
- *   owner can attach the saved PDF manually.
- * - Hidden entirely when there's no customer phone on the sale.
+ *   owner saves as PDF from there. No canvas/vector PDF library is used, per
+ *   the invoice-generation skill.
+ * - Share opens an inline panel asking which WhatsApp number to send to
+ *   (prefilled from the customer's saved phone if there is one, but always
+ *   editable — the admin may want to send it to a different number). On
+ *   confirm it opens wa.me/<number> directly in that number's chat with the
+ *   full itemized bill + payment breakdown prefilled as the message text —
+ *   the admin only has to press Send.
  */
 export function InvoiceActions({
   invoiceNumber,
-  customerPhone,
+  defaultPhone,
   shareText,
 }: {
   invoiceNumber: string;
-  customerPhone: string | null;
+  defaultPhone: string;
   shareText: string;
 }) {
-  const [notice, setNotice] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState(defaultPhone);
 
-  async function handleShare() {
-    setNotice(null);
-
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      try {
-        await navigator.share({ title: `Invoice ${invoiceNumber}`, text: shareText });
-        return;
-      } catch {
-        // User cancelled or share failed — fall through to the manual fallback below.
-      }
-    }
-
-    if (customerPhone) {
-      const digits = customerPhone.replace(/[^\d]/g, "");
-      window.print();
-      window.open(`https://wa.me/${digits}?text=${encodeURIComponent(shareText)}`, "_blank");
-      setNotice("Opened WhatsApp — attach the downloaded/printed PDF manually.");
-    }
+  function handleSend() {
+    const digits = phone.replace(/[^\d]/g, "");
+    if (!digits) return;
+    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(shareText)}`, "_blank");
+    setOpen(false);
   }
 
   return (
@@ -55,13 +40,33 @@ export function InvoiceActions({
         <Button variant="outline" onClick={() => window.print()}>
           Download
         </Button>
-        {customerPhone ? (
-          <Button variant="primary" onClick={handleShare}>
-            Share
-          </Button>
-        ) : null}
+        <Button variant="primary" onClick={() => setOpen((v) => !v)}>
+          Share
+        </Button>
       </div>
-      {notice ? <p className="text-xs text-slate">{notice}</p> : null}
+
+      {open ? (
+        <div className="w-72 rounded-lg border border-slate/20 bg-surface p-3 text-sm shadow-sm">
+          <p className="mb-2 text-xs text-slate">
+            WhatsApp number likhein jis ko {invoiceNumber} bhejni hai. OK karte hi WhatsApp us ki chat khol dega,
+            bill already likha hoga — bas Send dabayein.
+          </p>
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="03xxxxxxxxx"
+            className="w-full rounded-lg border border-slate/25 bg-surface px-3 py-2 text-sm focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/30"
+          />
+          <div className="mt-2 flex gap-2">
+            <Button type="button" size="sm" onClick={handleSend} disabled={!phone.replace(/[^\d]/g, "")}>
+              Open WhatsApp
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
