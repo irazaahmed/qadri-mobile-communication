@@ -1,6 +1,6 @@
 "use server";
 
-import { recordCashOpeningBalance, deleteCashOpeningBalance } from "@/lib/actions/cash";
+import { recordCashOpeningBalance, deleteCashOpeningBalance, listCashEntries } from "@/lib/actions/cash";
 import { revalidatePath } from "next/cache";
 
 export type CashOpeningBalanceState = { error?: string; success?: string } | undefined;
@@ -11,20 +11,29 @@ export async function addCashOpeningBalanceAction(
 ): Promise<CashOpeningBalanceState> {
   const amount = String(formData.get("amount") || "").trim();
   const note = String(formData.get("note") || "").trim();
+  const direction = formData.get("direction") === "OUT" ? "OUT" : "IN";
 
   if (!amount || Number(amount) <= 0) {
     return { error: "Amount must be a positive number." };
   }
 
+  const isFirstEntry = (await listCashEntries()).length === 0;
+
   try {
-    await recordCashOpeningBalance({ amount, note: note || null });
+    await recordCashOpeningBalance({ amount, direction, note: note || null });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to record opening balance." };
   }
 
   revalidatePath("/admin/cash");
   revalidatePath("/admin");
-  return { success: "Opening cash balance recorded." };
+  return {
+    success: isFirstEntry
+      ? "Opening cash balance recorded."
+      : direction === "OUT"
+        ? "Cash out recorded."
+        : "Cash in recorded.",
+  };
 }
 
 export async function deleteCashOpeningBalanceAction(

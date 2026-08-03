@@ -9,29 +9,39 @@ import { Prisma, type CashLedgerEntry } from "@prisma/client";
  *
  * Manual cash-balance entries — the cash equivalent of a customer/supplier
  * "opening balance": lets the admin write down what's actually in the
- * drawer (typically once, when starting to use this system) without it
- * being tied to a real sale/purchase/payment. sourceType "MANUAL" per the
- * reserved value in lib/ledger.ts. Everything after this entry keeps
+ * drawer (typically once, when starting to use this system), plus any
+ * later ad-hoc adjustment (owner takes cash out, owner puts cash in) that
+ * isn't tied to a real sale/purchase/payment. sourceType "MANUAL" per the
+ * reserved value in lib/ledger.ts, signed by `direction` the same way
+ * lib/actions/bank.ts signs bank entries. Everything after this entry keeps
  * auto-adjusting through the normal appendCashLedger call sites exactly as
  * before — this file only adds the one missing manual entry point.
  */
 
 export interface CashOpeningBalanceInput {
   amount: number | string;
+  direction?: "IN" | "OUT";
   note?: string | null;
 }
 
 export async function recordCashOpeningBalance(input: CashOpeningBalanceInput): Promise<void> {
-  const amount = new Prisma.Decimal(input.amount);
-  if (amount.lessThanOrEqualTo(0)) {
+  const magnitude = new Prisma.Decimal(input.amount);
+  if (magnitude.lessThanOrEqualTo(0)) {
     throw new Error("Amount must be greater than zero.");
   }
+
+  const direction = input.direction ?? "IN";
+  const signedAmount = direction === "OUT" ? magnitude.negated() : magnitude;
 
   await prisma.$transaction(async (tx) => {
     await appendCashLedger(tx, {
       sourceType: "MANUAL",
-      amount,
-      note: input.note || "Opening cash balance — cash on hand when this system went into use",
+      amount: signedAmount,
+      note:
+        input.note ||
+        (direction === "OUT"
+          ? "Manual cash withdrawal"
+          : "Opening cash balance — cash on hand when this system went into use"),
     });
   });
 }
